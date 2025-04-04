@@ -119,13 +119,13 @@ struct CreateInvoiceView: View {
                                     .font(.headline)
 
                                 if let email = client.email, !email.isEmpty {
-                                    Text(client.email)
+                                    Text(email)
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                 }
 
                                 if let phone = client.phone, !phone.isEmpty {
-                                    Text(client.phone)
+                                    Text(phone)
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                 }
