@@ -146,6 +146,7 @@ struct BackupRestoreView: View {
                     // Manage backups
                     Button(action: {
                         loadBackupFiles()
+                        showingBackupFiles = true
                     }) {
                         HStack {
                             Image(systemName: "folder")
@@ -339,7 +340,7 @@ struct BackupRestoreView: View {
     }
 
     private func loadBackupFiles() {
-        Task {
+        Task { @MainActor in
             do {
                 backupFiles = try backupService.getBackupFiles().sorted { $0.lastPathComponent > $1.lastPathComponent }
             } catch {
@@ -350,25 +351,21 @@ struct BackupRestoreView: View {
     }
 
     private func checkBackupEncryption(url: URL) {
-        Task {
+        Task { @MainActor in
             do {
                 let isEncrypted = try backupService.isBackupEncrypted(at: url)
 
-                await MainActor.run {
-                    if isEncrypted {
-                        // Show password prompt for decryption
-                        decryptionPassword = ""
-                        showingPasswordPrompt = true
-                    } else {
-                        // Proceed with restore without password
-                        showingConfirmation = true
-                    }
+                if isEncrypted {
+                    // Show password prompt for decryption
+                    decryptionPassword = ""
+                    showingPasswordPrompt = true
+                } else {
+                    // Proceed with restore without password
+                    showingConfirmation = true
                 }
             } catch {
-                await MainActor.run {
-                    alertMessage = "Failed to check backup file: \(error.localizedDescription)"
-                    showingAlert = true
-                }
+                alertMessage = "Failed to check backup file: \(error.localizedDescription)"
+                showingAlert = true
             }
         }
     }
@@ -387,38 +384,32 @@ struct BackupRestoreView: View {
         // Get the password if needed
         let password = decryptionPassword.isEmpty ? nil : decryptionPassword
 
-        Task {
+        Task { @MainActor in
             do {
                 // Simulate progress for better UX
                 for i in 3...8 {
                     try await Task.sleep(nanoseconds: 300_000_000) // 0.3 seconds
-                    await MainActor.run {
-                        progressValue = Double(i) / 10.0
-                    }
+                    progressValue = Double(i) / 10.0
                 }
 
                 // Perform the actual restore with optional password
                 try await backupService.importAllData(from: selectedFile, password: password)
 
-                // Final update on main thread
-                await MainActor.run {
-                    progressValue = 1.0
-                    isProcessing = false
-                    alertMessage = "Data restored successfully. The app will now close."
-                    showingAlert = true
+                // Final update
+                progressValue = 1.0
+                isProcessing = false
+                alertMessage = "Data restored successfully. The app will now close."
+                showingAlert = true
 
-                    // Let user see the success message before closing app
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                        // Force app to restart to apply restored data completely
-                        exit(0)
-                    }
+                // Let user see the success message before closing app
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                    // Force app to restart to apply restored data completely
+                    exit(0)
                 }
             } catch {
-                await MainActor.run {
-                    isProcessing = false
-                    alertMessage = "Failed to restore backup: \(error.localizedDescription)"
-                    showingAlert = true
-                }
+                isProcessing = false
+                alertMessage = "Failed to restore backup: \(error.localizedDescription)"
+                showingAlert = true
             }
         }
     }
@@ -561,6 +552,10 @@ struct BackupFilesView: View {
     var onSelect: (URL) -> Void
     var onCancel: () -> Void
 
+    @State private var showingDeleteConfirmation = false
+    @State private var fileToDelete: URL?
+    @Environment(\.modelContext) private var modelContext
+
     private var dateFormatter: DateFormatter {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
@@ -603,6 +598,14 @@ struct BackupFilesView: View {
                                         .foregroundColor(.gray)
                                 }
                             }
+                            .swipeActions(edge: .trailing) {
+                                Button(role: .destructive) {
+                                    fileToDelete = file
+                                    showingDeleteConfirmation = true
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            }
                         }
                     }
                 }
@@ -615,6 +618,35 @@ struct BackupFilesView: View {
                         onCancel()
                     }
                 }
+            }
+            .confirmationDialog(
+                "Are you sure you want to delete this backup?",
+                isPresented: $showingDeleteConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Delete", role: .destructive) {
+                    if let fileURL = fileToDelete {
+                        deleteBackupFile(fileURL)
+                    }
+                }
+                Button("Cancel", role: .cancel) { }
+            } message: {
+                Text("This action cannot be undone.")
+            }
+        }
+    }
+
+    private func deleteBackupFile(_ fileURL: URL) {
+        // Create a backup service to delete the file
+        let backupService = BackupService(modelContext: modelContext)
+
+        Task { @MainActor in
+            do {
+                try backupService.deleteBackupFile(at: fileURL)
+                // Notify the parent view to refresh the list
+                onCancel()
+            } catch {
+                print("Error deleting backup file: \(error)")
             }
         }
     }

@@ -33,6 +33,7 @@ struct BackupMetadata: Codable {
 }
 
 /// BackupService handles the export and import of all app data
+@MainActor
 class BackupService {
     private let modelContext: ModelContext
     private let encryptionService = EncryptionService()
@@ -196,7 +197,9 @@ class BackupService {
 
             // Create a combined JSON file instead of a ZIP
             let dateFormatter = DateFormatter()
+            // Use a simple date format without special characters
             dateFormatter.dateFormat = "yyyyMMdd_HHmmss"
+            dateFormatter.locale = Locale(identifier: "en_US_POSIX")
             let dateString = dateFormatter.string(from: Date())
 
             // We need to use JSONSerialization for the combined backup
@@ -249,7 +252,8 @@ class BackupService {
 
             // Get the backups directory
             let backupsDirectory = try getBackupsDirectory()
-            let fileName = "stockly_backup_\(dateString).stocklybackup"
+            // Use a simpler filename format without special characters
+            let fileName = "stockly_backup_\(dateString.replacingOccurrences(of: " ", with: "_")).stocklybackup"
             let backupFileURL = backupsDirectory.appendingPathComponent(fileName)
 
             // Serialize the backup data
