@@ -649,7 +649,7 @@ struct BackupSettingsView: View {
                     Text("Every month").tag(30)
                     Text("Never").tag(0)
                 }
-                .onChange(of: reminderInterval) { newValue in
+                .onChange(of: reminderInterval) { oldValue, newValue in
                     backupService.backupReminderInterval = newValue
                 }
             } header: {
@@ -658,7 +658,7 @@ struct BackupSettingsView: View {
 
             Section {
                 Toggle("Password Protection", isOn: $isPasswordEnabled)
-                    .onChange(of: isPasswordEnabled) { newValue in
+                    .onChange(of: isPasswordEnabled) { oldValue, newValue in
                         if newValue {
                             // Show password setup sheet
                             showingPasswordSheet = true
