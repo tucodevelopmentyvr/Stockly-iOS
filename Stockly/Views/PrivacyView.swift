@@ -28,6 +28,11 @@ struct PrivacyView: View {
                     )
 
                     privacySection(
+                        title: "In-App Purchases",
+                        content: "Stockly offers optional in-app purchases for premium features. These transactions are processed by Apple's App Store, not by us. We do not store your payment information. Apple may collect payment information according to their privacy policy."
+                    )
+
+                    privacySection(
                         title: "Backups",
                         content: "Any backups you create using the app's backup feature are stored locally on your device. You are responsible for managing and securing these backup files."
                     )

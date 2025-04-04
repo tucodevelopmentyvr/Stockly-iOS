@@ -79,6 +79,11 @@ struct HelpView: View {
             )
 
             helpSection(
+                title: "Subscription & Limits",
+                content: "Stockly offers a free plan that allows you to create up to 80 invoices and 80 products/services. For unlimited usage, you can upgrade to a premium subscription for $1.99/month or $23/year. Manage your subscription in the Settings page."
+            )
+
+            helpSection(
                 title: "Customization",
                 content: "Stockly offers extensive customization options. You can customize your business profile, invoice/estimate layouts, tax rates, and more from the Settings page."
             )
