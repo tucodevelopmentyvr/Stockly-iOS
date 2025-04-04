@@ -297,7 +297,8 @@ struct MainMenuView: View {
                                     .padding(.top, isIPad ? 10 : 5)
                                     .padding(.bottom, isIPad ? 15 : 10)
 
-                                    Spacer(minLength: 0)
+                                    // Add significant space between title and menu items
+                                    Spacer().frame(height: isIPad ? 80 : 60)
 
                                     // Main Menu with Grid layout on iPad
                                     if isIPad {
@@ -319,7 +320,8 @@ struct MainMenuView: View {
                                         }
                                     }
 
-                                    Spacer(minLength: 0)
+                                    // Add space after menu items to balance the layout
+                                    Spacer().frame(height: isIPad ? 40 : 30)
                                 }
 
                                 // Footer positioned at the bottom using VStack alignment
