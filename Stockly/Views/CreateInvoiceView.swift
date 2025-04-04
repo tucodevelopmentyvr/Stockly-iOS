@@ -4,6 +4,9 @@ import SwiftData
 struct CreateInvoiceView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var subscriptionService: SubscriptionService
+    
+    @State private var showingSubscriptionAlert = false
     
     @State private var invoiceNumber = ""
     @State private var clientName = ""
@@ -16,7 +19,7 @@ struct CreateInvoiceView: View {
     @State private var selectedClient: Client?
     @State private var showingClientPicker = false
     @State private var issueDate = Date()
-    @State private var dueDate = Date().addingTimeInterval(60*60*24*30) // 30 days
+    @State private var dueDate = Date() // Default to current date, user can change
     @State private var selectedItems: [InvoiceItemViewModel] = []
     @State private var discount = ""
     @State private var discountType = "percentage" // or "fixed"
@@ -29,389 +32,464 @@ struct CreateInvoiceView: View {
     @State private var customFields: [CustomFieldViewModel] = []
     @State private var templateType = "standard"
     
-    @State private var signature: Data?
-    @State private var showingItemSelector = false
-    @State private var showingSignatureCapture = false
-    @State private var showingAddCustomField = false
+    // States for showing various sheets and alerts
+    @State private var showingItemPicker = false
+    @State private var showingAddItemForm = false
+    @State private var showingAddCustomFieldForm = false
+    @State private var showingDatePicker = false
+    @State private var datePickerType: DatePickerType = .issueDate
+    @State private var showingDiscountTypePicker = false
+    @State private var showingPaymentMethodPicker = false
+    @State private var showingTemplateTypePicker = false
     @State private var showingPreview = false
-    @State private var isGenerating = false
-    @State private var generatedInvoice: Invoice?
-    
-    // Tax and rounding
-    @State private var roundingAdjustment: Double = 0.0
-    @AppStorage("defaultTaxRate") private var defaultTaxRate = "0.0"
-    
     @State private var showingAlert = false
     @State private var alertMessage = ""
+    @State private var showingDeleteConfirmation = false
+    @State private var itemToDelete: InvoiceItemViewModel?
+    @State private var customFieldToDelete: CustomFieldViewModel?
+    @State private var showingDeleteCustomFieldConfirmation = false
+    @State private var showingTaxRateInfo = false
+    @State private var showingDiscountInfo = false
+    @State private var showingDueDateInfo = false
+    @State private var showingInvoiceNumberInfo = false
+    @State private var showingPaymentMethodInfo = false
+    @State private var showingTemplateInfo = false
+    @State private var showingCustomFieldInfo = false
+    @State private var showingBankingInfo = false
+    @State private var showingNotesInfo = false
+    @State private var showingHeaderFooterInfo = false
     
-    @StateObject private var inventoryViewModel: InventoryViewModel
+    // App storage for default values
+    @AppStorage("defaultTaxRate") private var defaultTaxRate = "0.0"
+    @AppStorage("defaultDiscountValue") private var defaultDiscountValue = "0.0"
+    @AppStorage("defaultDiscountType") private var defaultDiscountType = "percentage"
+    @AppStorage("nextInvoiceNumber") private var nextInvoiceNumber = 1001
+    @AppStorage("companyName") private var companyName = ""
+    @AppStorage("companyAddress") private var companyAddress = ""
+    @AppStorage("companyEmail") private var companyEmail = ""
+    @AppStorage("companyPhone") private var companyPhone = ""
+    @AppStorage("bankName") private var bankName = ""
+    @AppStorage("accountNumber") private var accountNumber = ""
+    @AppStorage("routingNumber") private var routingNumber = ""
+    @AppStorage("swiftCode") private var swiftCode = ""
+    @AppStorage("invoiceDisclaimer") private var invoiceDisclaimer = "Thank you for your business."
+    @AppStorage("defaultDocumentTheme") private var defaultDocumentTheme = DocumentTheme.classic.rawValue
     
-    init(modelContext: ModelContext) {
-        let inventoryService = InventoryService(modelContext: modelContext)
-        _inventoryViewModel = StateObject(wrappedValue: InventoryViewModel(inventoryService: inventoryService))
-        
-        // Generate invoice number
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyyMMdd"
-        let dateString = dateFormatter.string(from: Date())
-        _invoiceNumber = State(initialValue: "INV-\(dateString)-\(Int.random(in: 1000...9999))")
-        
-        // Load defaults from settings
-        _taxRate = State(initialValue: UserDefaults.standard.string(forKey: "defaultTaxRate") ?? "0.0")
-        _headerNote = State(initialValue: UserDefaults.standard.string(forKey: "invoiceHeaderNote") ?? "")
-        _footerNote = State(initialValue: UserDefaults.standard.string(forKey: "invoiceFooterNote") ?? "")
-        _bankingInfo = State(initialValue: UserDefaults.standard.string(forKey: "bankingInfo") ?? "")
+    // Computed properties for validation and calculations
+    private var isFormValid: Bool {
+        !clientName.isEmpty && selectedItems.count > 0
+    }
+    
+    private var subtotal: Double {
+        selectedItems.reduce(0) { $0 + $1.total }
+    }
+    
+    private var discountAmount: Double {
+        let discountValue = Double(discount) ?? 0
+        if discountType == "percentage" {
+            return subtotal * (discountValue / 100)
+        } else {
+            return discountValue
+        }
+    }
+    
+    private var taxAmount: Double {
+        let taxRateValue = Double(taxRate) ?? 0
+        return (subtotal - discountAmount) * (taxRateValue / 100)
+    }
+    
+    private var total: Double {
+        subtotal - discountAmount + taxAmount
+    }
+    
+    enum DatePickerType {
+        case issueDate
+        case dueDate
     }
     
     var body: some View {
         NavigationStack {
             Form {
-                // Client Information
+                // Client Information Section
                 Section(header: Text("Client Information")) {
-                    HStack {
-                        TextField("Client Name", text: $clientName)
-                        
-                        // Client selection button
+                    if let client = selectedClient {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(client.name)
+                                    .font(.headline)
+                                
+                                if !client.email.isEmpty {
+                                    Text(client.email)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                
+                                if !client.phone.isEmpty {
+                                    Text(client.phone)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            
+                            Spacer()
+                            
+                            Button(action: {
+                                selectedClient = nil
+                                clientName = ""
+                                clientAddress = ""
+                                clientEmail = ""
+                                clientPhone = ""
+                                clientCity = ""
+                                clientCountry = "United States"
+                                clientPostalCode = ""
+                            }) {
+                                Text("Change")
+                                    .font(.caption)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Color.secondary.opacity(0.2))
+                                    .cornerRadius(4)
+                            }
+                        }
+                    } else {
                         Button(action: {
                             showingClientPicker = true
                         }) {
-                            Image(systemName: "person.fill.badge.plus")
-                                .foregroundColor(.accentColor)
+                            HStack {
+                                Image(systemName: "person.crop.circle.badge.plus")
+                                Text("Select Client")
+                            }
                         }
-                        .buttonStyle(.borderless)
+                        
+                        TextField("Client Name", text: $clientName)
+                        TextField("Email", text: $clientEmail)
+                            .keyboardType(.emailAddress)
+                            .autocapitalization(.none)
+                        TextField("Phone", text: $clientPhone)
+                            .keyboardType(.phonePad)
+                        
+                        TextField("Address", text: $clientAddress)
+                        TextField("City", text: $clientCity)
+                        TextField("Postal Code", text: $clientPostalCode)
+                        TextField("Country", text: $clientCountry)
                     }
-                    
-                    ZStack(alignment: .topLeading) {
-                        if clientAddress.isEmpty {
-                            Text("Client Address")
-                                .foregroundColor(.secondary)
-                                .padding(.top, 8)
-                        }
-                        TextEditor(text: $clientAddress)
-                            .frame(minHeight: 60)
-                    }
-                    
-                    TextField("City", text: $clientCity)
-                    
-                    HStack {
-                        Text("Country")
-                        Spacer()
-                        Text(clientCountry)
-                            .foregroundColor(.secondary)
-                    }
-                    
-                    TextField("Postal Code", text: $clientPostalCode)
-                    
-                    TextField("Client Email", text: $clientEmail)
-                        .keyboardType(.emailAddress)
-                    
-                    TextField("Client Phone", text: $clientPhone)
-                        .keyboardType(.phonePad)
                 }
                 
-                // Invoice Information
+                // Invoice Details Section
                 Section(header: Text("Invoice Details")) {
                     HStack {
                         Text("Invoice #")
                         Spacer()
-                        TextField("", text: $invoiceNumber)
+                        TextField("Invoice Number", text: $invoiceNumber)
                             .multilineTextAlignment(.trailing)
+                            .keyboardType(.numberPad)
+                        
+                        Button(action: {
+                            showingInvoiceNumberInfo = true
+                        }) {
+                            Image(systemName: "info.circle")
+                                .foregroundColor(.secondary)
+                        }
                     }
                     
-                    DatePicker("Issue Date", selection: $issueDate, displayedComponents: [.date])
-                    DatePicker("Due Date", selection: $dueDate, displayedComponents: [.date])
+                    HStack {
+                        Text("Issue Date")
+                        Spacer()
+                        Text(formattedDate(issueDate))
+                            .foregroundColor(.secondary)
+                        
+                        Button(action: {
+                            datePickerType = .issueDate
+                            showingDatePicker = true
+                        }) {
+                            Image(systemName: "calendar")
+                                .foregroundColor(.blue)
+                        }
+                    }
                     
-                    Picker("Payment Method", selection: $paymentMethod) {
-                        Text("Cash").tag("Cash")
-                        Text("Credit Card").tag("Credit Card")
-                        Text("Debit Card").tag("Debit Card")
-                        Text("Bank Transfer").tag("Bank Transfer")
-                        Text("Check").tag("Check")
-                        Text("Payment App").tag("Payment App")
-                        Text("Other").tag("Other")
+                    HStack {
+                        Text("Due Date")
+                        Spacer()
+                        Text(formattedDate(dueDate))
+                            .foregroundColor(.secondary)
+                        
+                        Button(action: {
+                            datePickerType = .dueDate
+                            showingDatePicker = true
+                        }) {
+                            Image(systemName: "calendar")
+                                .foregroundColor(.blue)
+                        }
+                        
+                        Button(action: {
+                            showingDueDateInfo = true
+                        }) {
+                            Image(systemName: "info.circle")
+                                .foregroundColor(.secondary)
+                        }
                     }
                 }
                 
                 // Items Section
                 Section(header: Text("Items")) {
-                    if selectedItems.isEmpty {
-                        Text("No items added")
-                            .foregroundColor(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .center)
-                            .padding(.vertical, 10)
-                    } else {
-                        ForEach(Array(zip(selectedItems.indices, selectedItems)), id: \.0) { index, item in
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack {
-                                    Text(item.name)
-                                        .font(.headline)
-                                    
-                                    Spacer()
-                                    
-                                    Button(action: {
-                                        selectedItems[index].isExpanded.toggle()
-                                    }) {
-                                        Image(systemName: selectedItems[index].isExpanded ? "chevron.up" : "chevron.down")
-                                            .foregroundColor(.gray)
-                                    }
-                                }
+                    ForEach(selectedItems.indices, id: \.self) { index in
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text(selectedItems[index].name)
+                                    .font(.headline)
                                 
-                                if selectedItems[index].isExpanded {
-                                    VStack(alignment: .leading, spacing: 8) {
-                                        HStack {
-                                            Text("Quantity:")
-                                            TextField("0", text: $selectedItems[index].quantity)
-                                                .keyboardType(.numberPad)
-                                                .multilineTextAlignment(.trailing)
-                                                .onChange(of: selectedItems[index].quantity) { _, _ in
-                                                    updateItemTotal(at: index)
-                                                }
-                                        }
-                                        
-                                        HStack {
-                                            Text("Unit Price: $")
-                                            TextField("0.00", text: $selectedItems[index].unitPrice)
-                                                .keyboardType(.decimalPad)
-                                                .multilineTextAlignment(.trailing)
-                                                .onChange(of: selectedItems[index].unitPrice) { _, _ in
-                                                    updateItemTotal(at: index)
-                                                }
-                                        }
-                                        
-                                        HStack {
-                                            Text("Tax: %")
-                                            TextField("0.0", text: $selectedItems[index].tax)
-                                                .keyboardType(.decimalPad)
-                                                .multilineTextAlignment(.trailing)
-                                                .onChange(of: selectedItems[index].tax) { _, _ in
-                                                    updateItemTotal(at: index)
-                                                }
-                                        }
-                                        
-                                        HStack {
-                                            Text("Discount: %")
-                                            TextField("0.0", text: $selectedItems[index].discount)
-                                                .keyboardType(.decimalPad)
-                                                .multilineTextAlignment(.trailing)
-                                                .onChange(of: selectedItems[index].discount) { _, _ in
-                                                    updateItemTotal(at: index)
-                                                }
-                                        }
-                                    }
-                                    .padding(.vertical, 8)
-                                }
+                                Spacer()
                                 
-                                HStack {
-                                    Text("Total: ")
-                                        .foregroundColor(.secondary)
-                                    
-                                    Spacer()
-                                    
-                                    Text("$\(calculateItemTotal(item), specifier: "%.2f")")
-                                        .fontWeight(.medium)
+                                Button(action: {
+                                    itemToDelete = selectedItems[index]
+                                    showingDeleteConfirmation = true
+                                }) {
+                                    Image(systemName: "trash")
+                                        .foregroundColor(.red)
                                 }
                             }
-                            .padding(.vertical, 4)
+                            
+                            HStack {
+                                Text("\(selectedItems[index].quantity, specifier: "%.2f") × \(formatCurrency(selectedItems[index].price))")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                
+                                Spacer()
+                                
+                                Text(formatCurrency(selectedItems[index].total))
+                                    .font(.subheadline)
+                            }
+                            
+                            if !selectedItems[index].description.isEmpty {
+                                Text(selectedItems[index].description)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .padding(.top, 2)
+                            }
                         }
-                        .onDelete { indices in
-                            selectedItems.remove(atOffsets: indices)
+                        .padding(.vertical, 4)
+                    }
+                    
+                    Button(action: {
+                        showingItemPicker = true
+                    }) {
+                        HStack {
+                            Image(systemName: "plus.circle.fill")
+                                .foregroundColor(.green)
+                            Text("Add Item")
                         }
                     }
                     
                     Button(action: {
-                        showingItemSelector = true
+                        showingAddItemForm = true
                     }) {
-                        Label("Add Item", systemImage: "plus")
+                        HStack {
+                            Image(systemName: "square.and.pencil")
+                                .foregroundColor(.blue)
+                            Text("Create New Item")
+                        }
                     }
                 }
                 
-                // Discounts & Taxes
-                Section(header: Text("Amounts")) {
-                    Picker("Discount Type", selection: $discountType) {
-                        Text("Percentage (%)").tag("percentage")
-                        Text("Fixed Amount ($)").tag("fixed")
-                    }
-                    .pickerStyle(SegmentedPickerStyle())
-                    
-                    HStack {
-                        Text(discountType == "percentage" ? "Discount (%)" : "Discount ($)")
-                        Spacer()
-                        TextField("0.0", text: $discount)
-                            .keyboardType(.decimalPad)
-                            .multilineTextAlignment(.trailing)
-                            .frame(width: 100)
-                    }
-                    
-                    HStack {
-                        Text("Tax Rate (%)")
-                        Spacer()
-                        TextField("0.0", text: $taxRate)
-                            .keyboardType(.decimalPad)
-                            .multilineTextAlignment(.trailing)
-                            .frame(width: 100)
-                    }
-                    
-                    HStack {
-                        Text("Rounding Adjustment")
-                        Spacer()
-                        Stepper(String(format: "$%.2f", roundingAdjustment), 
-                                value: $roundingAdjustment, 
-                                in: -1.0...1.0,
-                                step: 0.01)
-                    }
-                }
-                
-                // Summary
-                Section(header: Text("Summary")) {
+                // Totals Section
+                Section(header: Text("Totals")) {
                     HStack {
                         Text("Subtotal")
                         Spacer()
-                        Text("$\(calculateSubtotal(), specifier: "%.2f")")
+                        Text(formatCurrency(subtotal))
                     }
                     
                     HStack {
-                        Text(discountType == "percentage" ? 
-                             "Discount (\(discount)%)" : 
-                             "Discount")
+                        Text("Discount")
+                        
+                        Button(action: {
+                            showingDiscountInfo = true
+                        }) {
+                            Image(systemName: "info.circle")
+                                .foregroundColor(.secondary)
+                        }
+                        
                         Spacer()
-                        Text("$\(calculateDiscountAmount(), specifier: "%.2f")")
-                            .foregroundColor(.red)
-                    }
-                    
-                    HStack {
-                        Text("Tax (\(taxRate)%)")
-                        Spacer()
-                        Text("$\(calculateTaxAmount(), specifier: "%.2f")")
-                    }
-                    
-                    if roundingAdjustment != 0 {
-                        HStack {
-                            Text("Rounding")
-                            Spacer()
-                            Text("$\(roundingAdjustment, specifier: "%.2f")")
-                                .foregroundColor(roundingAdjustment > 0 ? .primary : .red)
+                        
+                        TextField("0.0", text: $discount)
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                            .frame(width: 60)
+                        
+                        Button(action: {
+                            showingDiscountTypePicker = true
+                        }) {
+                            Text(discountType == "percentage" ? "%" : "$")
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.secondary.opacity(0.2))
+                                .cornerRadius(4)
                         }
                     }
                     
-                    Divider()
+                    if discountAmount > 0 {
+                        HStack {
+                            Text("Discount Amount")
+                            Spacer()
+                            Text(formatCurrency(discountAmount))
+                                .foregroundColor(.red)
+                        }
+                    }
+                    
+                    HStack {
+                        Text("Tax Rate")
+                        
+                        Button(action: {
+                            showingTaxRateInfo = true
+                        }) {
+                            Image(systemName: "info.circle")
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        Spacer()
+                        
+                        TextField("0.0", text: $taxRate)
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                            .frame(width: 60)
+                        
+                        Text("%")
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    if taxAmount > 0 {
+                        HStack {
+                            Text("Tax Amount")
+                            Spacer()
+                            Text(formatCurrency(taxAmount))
+                        }
+                    }
                     
                     HStack {
                         Text("Total")
-                            .fontWeight(.bold)
+                            .font(.headline)
                         Spacer()
-                        Text("$\(calculateTotal(), specifier: "%.2f")")
-                            .fontWeight(.bold)
+                        Text(formatCurrency(total))
+                            .font(.headline)
                     }
                 }
                 
-                // Notes
-                Section(header: Text("Notes")) {
-                    ZStack(alignment: .topLeading) {
-                        if notes.isEmpty {
-                            Text("Notes for this invoice")
-                                .foregroundColor(.secondary)
-                                .padding(.top, 8)
-                        }
-                        TextEditor(text: $notes)
-                            .frame(minHeight: 60)
-                    }
-                }
-                
-                // Custom Fields
-                Section(header: HStack {
-                    Text("Custom Fields")
-                    Spacer()
-                    Button(action: {
-                        showingAddCustomField = true
-                    }) {
-                        Image(systemName: "plus.circle")
-                            .foregroundColor(.accentColor)
-                    }
-                }) {
-                    if customFields.isEmpty {
-                        Text("No custom fields")
+                // Additional Details Section
+                Section(header: Text("Additional Details")) {
+                    HStack {
+                        Text("Payment Method")
+                        Spacer()
+                        Text(paymentMethod)
                             .foregroundColor(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .center)
-                            .padding(.vertical, 10)
-                    } else {
-                        ForEach(Array(zip(customFields.indices, customFields)), id: \.0) { index, field in
-                            HStack {
-                                Text(field.name)
-                                Spacer()
-                                TextField("Value", text: $customFields[index].value)
-                                    .multilineTextAlignment(.trailing)
-                            }
+                        
+                        Button(action: {
+                            showingPaymentMethodPicker = true
+                        }) {
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
                         }
-                        .onDelete { indices in
-                            customFields.remove(atOffsets: indices)
+                        
+                        Button(action: {
+                            showingPaymentMethodInfo = true
+                        }) {
+                            Image(systemName: "info.circle")
+                                .foregroundColor(.secondary)
                         }
-                    }
-                }
-                
-                // Additional Settings
-                Section(header: Text("Additional Settings")) {
-                    NavigationLink(destination: InvoiceHeaderFooterView(
-                        headerNote: $headerNote,
-                        footerNote: $footerNote,
-                        bankingInfo: $bankingInfo
-                    )) {
-                        Text("Header/Footer & Banking Info")
                     }
                     
-                    NavigationLink(destination: InvoiceTemplateSelectionView(
-                        templateType: $templateType
-                    )) {
-                        Text("Template Selection")
+                    HStack {
+                        Text("Template")
+                        Spacer()
+                        Text(templateType.capitalized)
+                            .foregroundColor(.secondary)
+                        
+                        Button(action: {
+                            showingTemplateTypePicker = true
+                        }) {
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        Button(action: {
+                            showingTemplateInfo = true
+                        }) {
+                            Image(systemName: "info.circle")
+                                .foregroundColor(.secondary)
+                        }
                     }
                     
-                    Button(action: {
-                        showingSignatureCapture = true
-                    }) {
+                    NavigationLink(destination: Text("Banking Details").padding()) {
                         HStack {
-                            Text("Add Signature")
+                            Text("Banking Details")
                             Spacer()
-                            if signature != nil {
-                                Text("Signature Added")
+                            if !bankName.isEmpty || !accountNumber.isEmpty {
+                                Text("Added")
                                     .foregroundColor(.green)
                             } else {
-                                Text("No Signature")
+                                Text("Not Added")
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                    
+                    NavigationLink(destination: Text("Notes").padding()) {
+                        HStack {
+                            Text("Notes")
+                            Spacer()
+                            if !notes.isEmpty {
+                                Text("Added")
+                                    .foregroundColor(.green)
+                            } else {
+                                Text("Not Added")
                                     .foregroundColor(.secondary)
                             }
                         }
                     }
                 }
                 
-                // Action Buttons
-                Section {
-                    VStack(spacing: 12) {
-                        Button(action: generateInvoice) {
-                            if isGenerating {
-                                HStack {
-                                    Spacer()
-                                    ProgressView()
-                                        .progressViewStyle(CircularProgressViewStyle())
-                                    Spacer()
-                                }
-                            } else {
-                                Text("Generate PDF")
-                                    .frame(maxWidth: .infinity, alignment: .center)
-                                    .fontWeight(.semibold)
+                // Custom Fields Section
+                Section(header: HStack {
+                    Text("Custom Fields")
+                    Spacer()
+                    Button(action: {
+                        showingCustomFieldInfo = true
+                    }) {
+                        Image(systemName: "info.circle")
+                            .foregroundColor(.secondary)
+                    }
+                }) {
+                    ForEach(customFields.indices, id: \.self) { index in
+                        HStack {
+                            VStack(alignment: .leading) {
+                                Text(customFields[index].name)
+                                    .font(.headline)
+                                Text(customFields[index].value)
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                            }
+                            
+                            Spacer()
+                            
+                            Button(action: {
+                                customFieldToDelete = customFields[index]
+                                showingDeleteCustomFieldConfirmation = true
+                            }) {
+                                Image(systemName: "trash")
+                                    .foregroundColor(.red)
                             }
                         }
-                        .disabled(isGenerating || clientName.isEmpty || selectedItems.isEmpty)
-                        .listRowBackground(Color.accentColor)
-                        .foregroundColor(.white)
-                        
-                        Button(action: {
-                            finalizeInvoice()
-                        }) {
-                            Text("Finalize & Save Invoice")
-                                .frame(maxWidth: .infinity, alignment: .center)
-                                .fontWeight(.semibold)
+                    }
+                    
+                    Button(action: {
+                        showingAddCustomFieldForm = true
+                    }) {
+                        HStack {
+                            Image(systemName: "plus.circle.fill")
+                                .foregroundColor(.green)
+                            Text("Add Custom Field")
                         }
-                        .disabled(isGenerating || clientName.isEmpty || selectedItems.isEmpty)
-                        .listRowBackground(Color.green)
-                        .foregroundColor(.white)
                     }
                 }
             }
@@ -423,1000 +501,359 @@ struct CreateInvoiceView: View {
                         dismiss()
                     }
                 }
+                
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Preview") {
+                        if !subscriptionService.canCreateInvoice() {
+                            showingSubscriptionAlert = true
+                        } else {
+                            showingPreview = true
+                        }
+                    }
+                    .disabled(!isFormValid)
+                }
             }
-            .sheet(isPresented: $showingItemSelector) {
-                InvoiceItemSelectorView(
-                    inventory: inventoryViewModel,
-                    selectedItems: $selectedItems
-                )
-            }
-            .sheet(isPresented: $showingSignatureCapture) {
-                SignatureCaptureView(signature: $signature)
-            }
-            .sheet(isPresented: $showingAddCustomField) {
-                AddCustomFieldView(customFields: $customFields)
-            }
-            .sheet(isPresented: $showingPreview) {
-                if let invoice = generatedInvoice {
-                    InvoicePreviewView(invoice: invoice)
+            .onAppear {
+                // Check subscription limits when view appears
+                if !subscriptionService.canCreateInvoice() {
+                    showingSubscriptionAlert = true
+                }
+                
+                // Set default values
+                invoiceNumber = String(nextInvoiceNumber)
+                taxRate = defaultTaxRate
+                discount = defaultDiscountValue
+                discountType = defaultDiscountType
+                templateType = DocumentTheme(rawValue: defaultDocumentTheme)?.rawValue ?? "classic"
+                
+                // Set due date to 30 days from now by default
+                if let thirtyDaysLater = Calendar.current.date(byAdding: .day, value: 30, to: Date()) {
+                    dueDate = thirtyDaysLater
+                }
+                
+                // Set footer note to default disclaimer
+                footerNote = invoiceDisclaimer
+                
+                // Set banking info
+                if !bankName.isEmpty || !accountNumber.isEmpty {
+                    var info = ""
+                    if !bankName.isEmpty {
+                        info += "Bank: \(bankName)\n"
+                    }
+                    if !accountNumber.isEmpty {
+                        info += "Account: \(accountNumber)\n"
+                    }
+                    if !routingNumber.isEmpty {
+                        info += "Routing: \(routingNumber)\n"
+                    }
+                    if !swiftCode.isEmpty {
+                        info += "SWIFT: \(swiftCode)"
+                    }
+                    bankingInfo = info
                 }
             }
             .sheet(isPresented: $showingClientPicker) {
-                ClientPickerView(selectedClient: Binding(
-                    get: { selectedClient },
-                    set: { client in
-                        selectedClient = client
-                        if let client = client {
-                            clientName = client.name
-                            clientAddress = client.address
-                            clientCity = client.city
-                            clientCountry = client.country
-                            clientPostalCode = client.postalCode
-                            clientEmail = client.email ?? ""
-                            clientPhone = client.phone ?? ""
-                        }
-                    }
-                ))
+                // Client picker sheet
+                Text("Client Picker")
+            }
+            .sheet(isPresented: $showingItemPicker) {
+                // Item picker sheet
+                Text("Item Picker")
+            }
+            .sheet(isPresented: $showingAddItemForm) {
+                // Add item form
+                Text("Add Item Form")
+            }
+            .sheet(isPresented: $showingAddCustomFieldForm) {
+                // Add custom field form
+                Text("Add Custom Field Form")
+            }
+            .sheet(isPresented: $showingDatePicker) {
+                // Date picker
+                Text("Date Picker")
+            }
+            .sheet(isPresented: $showingDiscountTypePicker) {
+                // Discount type picker
+                Text("Discount Type Picker")
+            }
+            .sheet(isPresented: $showingPaymentMethodPicker) {
+                // Payment method picker
+                Text("Payment Method Picker")
+            }
+            .sheet(isPresented: $showingTemplateTypePicker) {
+                // Template type picker
+                Text("Template Type Picker")
+            }
+            .sheet(isPresented: $showingPreview) {
+                // Invoice preview
+                Text("Invoice Preview")
+            }
+            .sheet(isPresented: $showingSubscriptionAlert) {
+                // Subscription limit alert
+                SubscriptionLimitView(limitType: .invoice) {
+                    // Show subscription view when user taps upgrade
+                    dismiss()
+                    // This would typically navigate to the subscription view
+                }
             }
             .alert(isPresented: $showingAlert) {
                 Alert(
-                    title: Text("Notification"),
+                    title: Text("Error"),
                     message: Text(alertMessage),
                     dismissButton: .default(Text("OK"))
                 )
             }
-            .onAppear {
-                inventoryViewModel.loadItems()
-            }
-        }
-    }
-    
-    // MARK: - Helper Methods
-    
-    private func updateItemTotal(at index: Int) {
-        // Update calculations when values change
-        // No implementation needed as we calculate on-the-fly
-    }
-    
-    private func calculateItemTotal(_ item: InvoiceItemViewModel) -> Double {
-        guard let quantity = Int(item.quantity), 
-              let unitPrice = Double(item.unitPrice),
-              let tax = Double(item.tax),
-              let discount = Double(item.discount) else {
-            return 0.0
-        }
-        
-        let subtotal = Double(quantity) * unitPrice
-        let discountAmount = subtotal * (discount / 100)
-        let afterDiscount = subtotal - discountAmount
-        let taxAmount = afterDiscount * (tax / 100)
-        
-        return afterDiscount + taxAmount
-    }
-    
-    private func calculateSubtotal() -> Double {
-        selectedItems.reduce(0) { $0 + calculateItemTotal($1) }
-    }
-    
-    private func calculateDiscountAmount() -> Double {
-        let subtotal = calculateSubtotal()
-        if discountType == "percentage" {
-            if let discountPercentage = Double(discount) {
-                return subtotal * (discountPercentage / 100)
-            }
-        } else {
-            if let fixedDiscount = Double(discount) {
-                return fixedDiscount
-            }
-        }
-        return 0.0
-    }
-    
-    private func calculateTaxAmount() -> Double {
-        let subtotal = calculateSubtotal()
-        let discountAmount = calculateDiscountAmount()
-        let afterDiscount = subtotal - discountAmount
-        
-        if let taxPercentage = Double(taxRate) {
-            return afterDiscount * (taxPercentage / 100)
-        }
-        return 0.0
-    }
-    
-    private func calculateTotal() -> Double {
-        let subtotal = calculateSubtotal()
-        let discountAmount = calculateDiscountAmount()
-        let taxAmount = calculateTaxAmount()
-        
-        return subtotal - discountAmount + taxAmount + roundingAdjustment
-    }
-    
-    private func finalizeInvoice() {
-        isGenerating = true
-        
-        // Convert view models to model objects and update inventory quantities
-        let invoiceItems = selectedItems.compactMap { item -> InvoiceItem? in
-            guard let quantity = Int(item.quantity),
-                  let unitPrice = Double(item.unitPrice),
-                  let tax = Double(item.tax),
-                  let discount = Double(item.discount) else {
-                return nil
-            }
-            
-            // Decrement inventory quantity for this item
-            if let inventoryItem = inventoryViewModel.findItemByName(item.name) {
-                inventoryItem.stockQuantity -= quantity
-                // Ensure we don't go below zero
-                if inventoryItem.stockQuantity < 0 {
-                    inventoryItem.stockQuantity = 0
+            .confirmationDialog(
+                "Are you sure you want to delete this item?",
+                isPresented: $showingDeleteConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Delete", role: .destructive) {
+                    if let item = itemToDelete, let index = selectedItems.firstIndex(where: { $0.id == item.id }) {
+                        selectedItems.remove(at: index)
+                    }
                 }
-                try? modelContext.save()
+                Button("Cancel", role: .cancel) { }
             }
-            
-            return InvoiceItem(
-                name: item.name,
-                description: item.description,
-                quantity: quantity,
-                unitPrice: unitPrice,
-                tax: tax,
-                discount: discount
-            )
+            .confirmationDialog(
+                "Are you sure you want to delete this custom field?",
+                isPresented: $showingDeleteCustomFieldConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Delete", role: .destructive) {
+                    if let field = customFieldToDelete, let index = customFields.firstIndex(where: { $0.id == field.id }) {
+                        customFields.remove(at: index)
+                    }
+                }
+                Button("Cancel", role: .cancel) { }
+            }
+            .alert(isPresented: $showingTaxRateInfo) {
+                Alert(
+                    title: Text("Tax Rate"),
+                    message: Text("Enter the tax rate as a percentage (e.g., 7.5 for 7.5%)."),
+                    dismissButton: .default(Text("OK"))
+                )
+            }
+            .alert(isPresented: $showingDiscountInfo) {
+                Alert(
+                    title: Text("Discount"),
+                    message: Text("Enter a discount as either a percentage or a fixed amount."),
+                    dismissButton: .default(Text("OK"))
+                )
+            }
+            .alert(isPresented: $showingDueDateInfo) {
+                Alert(
+                    title: Text("Due Date"),
+                    message: Text("The date by which payment is expected. Typically 30 days after the issue date."),
+                    dismissButton: .default(Text("OK"))
+                )
+            }
+            .alert(isPresented: $showingInvoiceNumberInfo) {
+                Alert(
+                    title: Text("Invoice Number"),
+                    message: Text("A unique identifier for this invoice. The next available number is suggested automatically."),
+                    dismissButton: .default(Text("OK"))
+                )
+            }
+            .alert(isPresented: $showingPaymentMethodInfo) {
+                Alert(
+                    title: Text("Payment Method"),
+                    message: Text("The method by which you expect to receive payment for this invoice."),
+                    dismissButton: .default(Text("OK"))
+                )
+            }
+            .alert(isPresented: $showingTemplateInfo) {
+                Alert(
+                    title: Text("Template"),
+                    message: Text("Choose a visual style for your invoice. This affects the layout and design of the PDF."),
+                    dismissButton: .default(Text("OK"))
+                )
+            }
+            .alert(isPresented: $showingCustomFieldInfo) {
+                Alert(
+                    title: Text("Custom Fields"),
+                    message: Text("Add any additional information that doesn't fit in the standard fields."),
+                    dismissButton: .default(Text("OK"))
+                )
+            }
+            .alert(isPresented: $showingBankingInfo) {
+                Alert(
+                    title: Text("Banking Details"),
+                    message: Text("Add your banking information to make it easier for clients to pay you."),
+                    dismissButton: .default(Text("OK"))
+                )
+            }
+            .alert(isPresented: $showingNotesInfo) {
+                Alert(
+                    title: Text("Notes"),
+                    message: Text("Add any additional notes or instructions for the client."),
+                    dismissButton: .default(Text("OK"))
+                )
+            }
+            .alert(isPresented: $showingHeaderFooterInfo) {
+                Alert(
+                    title: Text("Header & Footer"),
+                    message: Text("Add text to appear at the top and bottom of your invoice."),
+                    dismissButton: .default(Text("OK"))
+                )
+            }
+        }
+    }
+    
+    // Helper function to format dates
+    private func formattedDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return formatter.string(from: date)
+    }
+    
+    // Helper function to format currency
+    private func formatCurrency(_ amount: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencySymbol = "$" // Use the user's preferred currency symbol
+        return formatter.string(from: NSNumber(value: amount)) ?? "$\(amount)"
+    }
+    
+    // Helper function to create invoice data for preview
+    private func createInvoiceData() -> [String: Any] {
+        // Create a dictionary with all the invoice data
+        var invoiceData: [String: Any] = [
+            "invoiceNumber": invoiceNumber,
+            "clientName": clientName,
+            "clientAddress": clientAddress,
+            "clientEmail": clientEmail,
+            "clientPhone": clientPhone,
+            "clientCity": clientCity,
+            "clientCountry": clientCountry,
+            "clientPostalCode": clientPostalCode,
+            "issueDate": issueDate,
+            "dueDate": dueDate,
+            "subtotal": subtotal,
+            "discount": Double(discount) ?? 0,
+            "discountType": discountType,
+            "taxRate": Double(taxRate) ?? 0,
+            "taxAmount": taxAmount,
+            "total": total,
+            "paymentMethod": paymentMethod,
+            "notes": notes,
+            "headerNote": headerNote,
+            "footerNote": footerNote,
+            "bankingInfo": bankingInfo,
+            "templateType": templateType,
+            "items": selectedItems.map { item in
+                [
+                    "name": item.name,
+                    "description": item.description,
+                    "quantity": item.quantity,
+                    "price": item.price,
+                    "total": item.total
+                ]
+            },
+            "customFields": customFields.map { field in
+                [
+                    "name": field.name,
+                    "value": field.value
+                ]
+            }
+        ]
+        
+        return invoiceData
+    }
+    
+    // Helper function to save the invoice
+    private func saveInvoice() {
+        guard isFormValid else {
+            alertMessage = "Please fill in all required fields."
+            showingAlert = true
+            return
         }
         
-        // If a new client was entered, save them to the database
-        if selectedClient == nil && !clientName.isEmpty {
-            let newClient = Client(
-                name: clientName,
-                email: clientEmail.isEmpty ? nil : clientEmail,
-                phone: clientPhone.isEmpty ? nil : clientPhone,
-                address: clientAddress,
-                city: clientCity,
-                country: clientCountry,
-                postalCode: clientPostalCode
-            )
-            modelContext.insert(newClient)
-            try? modelContext.save()
-            selectedClient = newClient
-        }
-        
-        let customFieldModels = customFields.map { field in
-            CustomInvoiceField(name: field.name, value: field.value)
-        }
-        
-        let discountValue = Double(discount) ?? 0.0
-        let taxRateValue = Double(taxRate) ?? 0.0
-        
-        // Create finalized invoice
+        // Create a new invoice
         let invoice = Invoice(
-            number: invoiceNumber,
+            invoiceNumber: invoiceNumber,
             clientName: clientName,
             clientAddress: clientAddress,
-            clientEmail: clientEmail.isEmpty ? nil : clientEmail,
-            clientPhone: clientPhone.isEmpty ? nil : clientPhone,
-            status: .pending, // Marked as pending instead of draft
+            clientEmail: clientEmail,
+            clientPhone: clientPhone,
+            clientCity: clientCity,
+            clientCountry: clientCountry,
+            clientPostalCode: clientPostalCode,
+            issueDate: issueDate,
+            dueDate: dueDate,
+            subtotal: subtotal,
+            discount: Double(discount) ?? 0,
+            discountType: discountType,
+            taxRate: Double(taxRate) ?? 0,
+            taxAmount: taxAmount,
+            total: total,
             paymentMethod: paymentMethod,
-            documentType: "invoice",
-            dateCreated: issueDate,
-            dueDate: dueDate,
-            items: invoiceItems,
-            discount: discountValue,
-            discountType: discountType,
-            taxRate: taxRateValue,
             notes: notes,
-            headerNote: headerNote.isEmpty ? nil : headerNote,
-            footerNote: footerNote.isEmpty ? nil : footerNote,
-            bankingInfo: bankingInfo.isEmpty ? nil : bankingInfo,
-            signature: signature,
+            headerNote: headerNote,
+            footerNote: footerNote,
+            bankingInfo: bankingInfo,
             templateType: templateType,
-            customFields: customFieldModels
+            status: "draft"
         )
         
-        // Save to database
+        // Add the invoice to the model context
         modelContext.insert(invoice)
         
-        do {
-            try modelContext.save()
-            isGenerating = false
-            alertMessage = "Invoice finalized and saved successfully"
-            showingAlert = true
-            
-            // Increment the next invoice number
-            UserDefaults.standard.set(
-                (UserDefaults.standard.integer(forKey: "nextInvoiceNumber") + 1),
-                forKey: "nextInvoiceNumber"
+        // Create invoice items
+        for itemVM in selectedItems {
+            let invoiceItem = InvoiceItem(
+                name: itemVM.name,
+                description: itemVM.description,
+                quantity: itemVM.quantity,
+                price: itemVM.price,
+                total: itemVM.total,
+                invoice: invoice
             )
-            
-            // Close the form after a brief delay
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                dismiss()
-            }
-        } catch {
-            isGenerating = false
-            alertMessage = "Failed to finalize invoice: \(error.localizedDescription)"
-            showingAlert = true
+            modelContext.insert(invoiceItem)
         }
-    }
-    
-    private func generateInvoice() {
-        isGenerating = true
         
-        // Convert view models to model objects
-        let invoiceItems = selectedItems.compactMap { item -> InvoiceItem? in
-            guard let quantity = Int(item.quantity),
-                  let unitPrice = Double(item.unitPrice),
-                  let tax = Double(item.tax),
-                  let discount = Double(item.discount) else {
-                return nil
-            }
-            
-            return InvoiceItem(
-                name: item.name,
-                description: item.description,
-                quantity: quantity,
-                unitPrice: unitPrice,
-                tax: tax,
-                discount: discount
+        // Create custom fields
+        for fieldVM in customFields {
+            let customField = CustomInvoiceField(
+                name: fieldVM.name,
+                value: fieldVM.value,
+                invoice: invoice
             )
+            modelContext.insert(customField)
         }
         
-        let customFieldModels = customFields.map { field in
-            CustomInvoiceField(name: field.name, value: field.value)
-        }
+        // Update the next invoice number
+        nextInvoiceNumber += 1
         
-        let discountValue = Double(discount) ?? 0.0
-        let taxRateValue = Double(taxRate) ?? 0.0
+        // Increment the invoice count in the subscription service
+        subscriptionService.incrementInvoiceCount()
         
-        // Create invoice
-        let invoice = Invoice(
-            number: invoiceNumber,
-            clientName: clientName,
-            clientAddress: clientAddress,
-            clientEmail: clientEmail.isEmpty ? nil : clientEmail,
-            clientPhone: clientPhone.isEmpty ? nil : clientPhone,
-            status: .draft,
-            documentType: "invoice",
-            dateCreated: issueDate,
-            dueDate: dueDate,
-            items: invoiceItems,
-            discount: discountValue,
-            discountType: discountType,
-            taxRate: taxRateValue,
-            notes: notes,
-            headerNote: headerNote.isEmpty ? nil : headerNote,
-            footerNote: footerNote.isEmpty ? nil : footerNote,
-            bankingInfo: bankingInfo.isEmpty ? nil : bankingInfo,
-            signature: signature,
-            templateType: templateType,
-            customFields: customFieldModels
-        )
-        
-        // Save to database
-        modelContext.insert(invoice)
-        
-        do {
-            try modelContext.save()
-            generatedInvoice = invoice
-            isGenerating = false
-            showingPreview = true
-        } catch {
-            isGenerating = false
-            alertMessage = "Failed to save invoice: \(error.localizedDescription)"
-            showingAlert = true
-        }
+        // Dismiss the view
+        dismiss()
     }
 }
 
-// MARK: - Supporting Views
-
-struct InvoiceItemSelectorView: View {
-    @ObservedObject var inventory: InventoryViewModel
-    @Binding var selectedItems: [InvoiceItemViewModel]
-    @Environment(\.dismiss) private var dismiss
-    @State private var searchText = ""
-    @State private var selectedItemsForInvoice: [Item: Int] = [:]
-    
-    var filteredItems: [Item] {
-        if searchText.isEmpty {
-            return inventory.items
-        } else {
-            return inventory.items.filter { 
-                $0.name.localizedCaseInsensitiveContains(searchText) || 
-                $0.sku.localizedCaseInsensitiveContains(searchText)
-            }
-        }
-    }
-    
-    var body: some View {
-        NavigationStack {
-            List {
-                ForEach(filteredItems, id: \.id) { item in
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(item.name)
-                                .font(.headline)
-                            
-                            Text("SKU: \(item.sku)")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            
-                            Text(String(format: "$%.2f", item.price))
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        Spacer()
-                        
-                        Stepper(
-                            "\(selectedItemsForInvoice[item, default: 0])",
-                            value: Binding(
-                                get: { selectedItemsForInvoice[item, default: 0] },
-                                set: { selectedItemsForInvoice[item] = $0 }
-                            ),
-                            in: 0...(item.stockQuantity)
-                        )
-                        .fixedSize()
-                    }
-                }
-            }
-            .searchable(text: $searchText, prompt: "Search items...")
-            .navigationTitle("Select Items")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-                
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Add") {
-                        for (item, quantity) in selectedItemsForInvoice where quantity > 0 {
-                            let newItem = InvoiceItemViewModel(
-                                name: item.name,
-                                description: item.itemDescription,
-                                quantity: String(quantity),
-                                unitPrice: String(format: "%.2f", item.price),
-                                tax: String(format: "%.1f", item.taxRate),
-                                discount: "0.0"
-                            )
-                            
-                            if let existingIndex = selectedItems.firstIndex(where: { $0.name == item.name }) {
-                                // Update existing item if it already exists
-                                if let existingQty = Int(selectedItems[existingIndex].quantity),
-                                   let newQty = Int(newItem.quantity) {
-                                    selectedItems[existingIndex].quantity = String(existingQty + newQty)
-                                } else {
-                                    selectedItems[existingIndex] = newItem
-                                }
-                            } else {
-                                // Add new item
-                                selectedItems.append(newItem)
-                            }
-                        }
-                        dismiss()
-                    }
-                }
-            }
-        }
-    }
-}
-
-struct SignatureCaptureView: View {
-    @Binding var signature: Data?
-    @Environment(\.dismiss) private var dismiss
-    @State private var currentDrawing = Drawing()
-    @State private var drawings: [Drawing] = []
-    @State private var color: Color = .black
-    @State private var lineWidth: CGFloat = 3
-    
-    var body: some View {
-        NavigationStack {
-            VStack {
-                // Signature area
-                ZStack {
-                    Rectangle()
-                        .fill(Color.white)
-                        .border(Color.gray, width: 1)
-                        .shadow(radius: 3)
-                    
-                    if drawings.isEmpty && currentDrawing.points.isEmpty {
-                        Text("Sign Here")
-                            .foregroundColor(.gray)
-                    }
-                    
-                    // Draw existing lines
-                    ForEach(drawings) { drawing in
-                        Path { path in
-                            if let firstPoint = drawing.points.first {
-                                path.move(to: firstPoint)
-                                for point in drawing.points.dropFirst() {
-                                    path.addLine(to: point)
-                                }
-                            }
-                        }
-                        .stroke(color, lineWidth: lineWidth)
-                    }
-                    
-                    // Draw current line
-                    Path { path in
-                        if let firstPoint = currentDrawing.points.first {
-                            path.move(to: firstPoint)
-                            for point in currentDrawing.points.dropFirst() {
-                                path.addLine(to: point)
-                            }
-                        }
-                    }
-                    .stroke(color, lineWidth: lineWidth)
-                    
-                    // Gesture for drawing
-                    Canvas { context, size in
-                        // Draw signature on canvas
-                    }
-                    .gesture(
-                        DragGesture(minimumDistance: 0, coordinateSpace: .local)
-                            .onChanged { value in
-                                let newPoint = value.location
-                                if currentDrawing.points.isEmpty || currentDrawing.points.last != newPoint {
-                                    currentDrawing.points.append(newPoint)
-                                }
-                            }
-                            .onEnded { _ in
-                                if !currentDrawing.points.isEmpty {
-                                    drawings.append(currentDrawing)
-                                    currentDrawing = Drawing()
-                                }
-                            }
-                    )
-                }
-                .padding()
-                
-                // Controls
-                HStack {
-                    Button("Clear") {
-                        drawings = []
-                        currentDrawing = Drawing()
-                    }
-                    .buttonStyle(.bordered)
-                    
-                    Spacer()
-                    
-                    Button("Save") {
-                        // Render signature to image and convert to data
-                        let renderer = ImageRenderer(content: signatureView)
-                        if let uiImage = renderer.uiImage {
-                            signature = uiImage.pngData()
-                            dismiss()
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
-                .padding()
-            }
-            .navigationTitle("Signature")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-            }
-        }
-    }
-    
-    private var signatureView: some View {
-        ZStack {
-            Rectangle()
-                .fill(Color.white)
-            
-            ForEach(drawings) { drawing in
-                Path { path in
-                    if let firstPoint = drawing.points.first {
-                        path.move(to: firstPoint)
-                        for point in drawing.points.dropFirst() {
-                            path.addLine(to: point)
-                        }
-                    }
-                }
-                .stroke(color, lineWidth: lineWidth)
-            }
-        }
-        .frame(width: 500, height: 200)
-    }
-    
-    struct Drawing: Identifiable {
-        let id = UUID()
-        var points: [CGPoint] = []
-    }
-}
-
-struct AddCustomFieldView: View {
-    @Binding var customFields: [CustomFieldViewModel]
-    @Environment(\.dismiss) private var dismiss
-    @State private var fieldName = ""
-    @State private var fieldValue = ""
-    
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section(header: Text("Custom Field")) {
-                    TextField("Field Name", text: $fieldName)
-                    TextField("Field Value", text: $fieldValue)
-                }
-                
-                Section {
-                    Button("Add Field") {
-                        if !fieldName.isEmpty {
-                            let newField = CustomFieldViewModel(name: fieldName, value: fieldValue)
-                            customFields.append(newField)
-                            dismiss()
-                        }
-                    }
-                    .disabled(fieldName.isEmpty)
-                }
-            }
-            .navigationTitle("Add Custom Field")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-            }
-        }
-    }
-}
-
-struct InvoiceHeaderFooterView: View {
-    @Binding var headerNote: String
-    @Binding var footerNote: String
-    @Binding var bankingInfo: String
-    
-    var body: some View {
-        Form {
-            Section(header: Text("Header Note")) {
-                ZStack(alignment: .topLeading) {
-                    if headerNote.isEmpty {
-                        Text("Header note (appears at top of invoice)")
-                            .foregroundColor(.secondary)
-                            .padding(.top, 8)
-                    }
-                    TextEditor(text: $headerNote)
-                        .frame(minHeight: 100)
-                }
-            }
-            
-            Section(header: Text("Footer Note")) {
-                ZStack(alignment: .topLeading) {
-                    if footerNote.isEmpty {
-                        Text("Footer note (appears at bottom of invoice)")
-                            .foregroundColor(.secondary)
-                            .padding(.top, 8)
-                    }
-                    TextEditor(text: $footerNote)
-                        .frame(minHeight: 100)
-                }
-            }
-            
-            Section(header: Text("Banking Information")) {
-                ZStack(alignment: .topLeading) {
-                    if bankingInfo.isEmpty {
-                        Text("Bank details for payment")
-                            .foregroundColor(.secondary)
-                            .padding(.top, 8)
-                    }
-                    TextEditor(text: $bankingInfo)
-                        .frame(minHeight: 100)
-                }
-            }
-        }
-        .navigationTitle("Header & Footer")
-        .navigationBarTitleDisplayMode(.inline)
-    }
-}
-
-struct InvoiceTemplateSelectionView: View {
-    @Binding var templateType: String
-    
-    private let templates = [
-        "standard", "modern", "minimal", "professional", "elegant"
-    ]
-    
-    var body: some View {
-        VStack {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 20) {
-                    ForEach(templates, id: \.self) { template in
-                        VStack {
-                            // Template preview
-                            ZStack {
-                                Rectangle()
-                                    .fill(colorForTemplate(template))
-                                    .frame(width: 200, height: 250)
-                                    .cornerRadius(10)
-                                
-                                RoundedRectangle(cornerRadius: 10)
-                                    .stroke(templateType == template ? Color.accentColor : Color.clear, lineWidth: 3)
-                                    .frame(width: 200, height: 250)
-                                
-                                VStack(spacing: 10) {
-                                    Rectangle()
-                                        .fill(Color.white.opacity(0.7))
-                                        .frame(height: 30)
-                                    
-                                    Rectangle()
-                                        .fill(Color.white.opacity(0.5))
-                                        .frame(height: 100)
-                                    
-                                    Rectangle()
-                                        .fill(Color.white.opacity(0.7))
-                                        .frame(height: 30)
-                                }
-                                .frame(width: 160)
-                                .padding()
-                            }
-                            
-                            Text(template.capitalized)
-                                .font(.headline)
-                        }
-                        .onTapGesture {
-                            templateType = template
-                        }
-                    }
-                }
-                .padding()
-            }
-            
-            // Template details
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Template: \(templateType.capitalized)")
-                    .font(.headline)
-                
-                Text("This template features a clean layout with a professional design, perfect for business invoices.")
-                    .font(.body)
-                    .foregroundColor(.secondary)
-                    .padding(.bottom)
-                
-                Text("Features:")
-                    .font(.subheadline)
-                
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack(alignment: .top, spacing: 5) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(.green)
-                        Text("Professional header and footer layout")
-                    }
-                    
-                    HStack(alignment: .top, spacing: 5) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(.green)
-                        Text("Clear itemization and totals section")
-                    }
-                    
-                    HStack(alignment: .top, spacing: 5) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(.green)
-                        Text("Space for company logo and branding")
-                    }
-                }
-            }
-            .padding()
-            .background(Color(UIColor.secondarySystemBackground))
-            .cornerRadius(10)
-            .padding()
-            
-            Spacer()
-        }
-        .navigationTitle("Select Template")
-        .navigationBarTitleDisplayMode(.inline)
-    }
-    
-    private func colorForTemplate(_ template: String) -> Color {
-        switch template {
-        case "standard":
-            return .blue
-        case "modern":
-            return .indigo
-        case "minimal":
-            return .gray
-        case "professional":
-            return .teal
-        case "elegant":
-            return .purple
-        default:
-            return .blue
-        }
-    }
-}
-
-struct InvoicePreviewView: View {
-    let invoice: Invoice
-    @Environment(\.dismiss) private var dismiss
-    @State private var showingShareSheet = false
-    
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 20) {
-                    // Header
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text("INVOICE")
-                            .font(.largeTitle)
-                            .fontWeight(.bold)
-                        
-                        Text("#\(invoice.number)")
-                            .font(.title3)
-                        
-                        if let headerNote = invoice.headerNote {
-                            Text(headerNote)
-                                .font(.callout)
-                                .foregroundColor(.secondary)
-                                .padding(.top, 2)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding()
-                    .background(Color(UIColor.secondarySystemBackground))
-                    .cornerRadius(10)
-                    
-                    // Date and Client Info
-                    HStack(alignment: .top) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Date Issued:")
-                                .font(.headline)
-                            Text(invoice.dateCreated, style: .date)
-                            
-                            Text("Due Date:")
-                                .font(.headline)
-                                .padding(.top, 4)
-                            Text(invoice.dueDate, style: .date)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Bill To:")
-                                .font(.headline)
-                            Text(invoice.clientName)
-                                .fontWeight(.semibold)
-                            Text(invoice.clientAddress)
-                                .fixedSize(horizontal: false, vertical: true)
-                            
-                            if let email = invoice.clientEmail {
-                                Text(email)
-                            }
-                            if let phone = invoice.clientPhone {
-                                Text(phone)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .padding()
-                    .background(Color(UIColor.secondarySystemBackground))
-                    .cornerRadius(10)
-                    
-                    // Items
-                    VStack(spacing: 0) {
-                        // Header
-                        HStack {
-                            Text("Item")
-                                .fontWeight(.semibold)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            
-                            Text("Qty")
-                                .fontWeight(.semibold)
-                                .frame(width: 50)
-                            
-                            Text("Price")
-                                .fontWeight(.semibold)
-                                .frame(width: 80)
-                            
-                            Text("Total")
-                                .fontWeight(.semibold)
-                                .frame(width: 80)
-                        }
-                        .padding(.vertical, 10)
-                        .padding(.horizontal)
-                        .background(Color.accentColor.opacity(0.1))
-                        
-                        // Item rows
-                        ForEach(invoice.items, id: \.id) { item in
-                            VStack {
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(item.name)
-                                            .fontWeight(.medium)
-                                        if let description = item.itemDescription {
-                                            Text(description)
-                                                .font(.caption)
-                                                .foregroundColor(.secondary)
-                                        }
-                                    }
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    
-                                    Text("\(item.quantity)")
-                                        .frame(width: 50)
-                                    
-                                    Text("$\(item.unitPrice, specifier: "%.2f")")
-                                        .frame(width: 80)
-                                    
-                                    Text("$\(item.totalAmount, specifier: "%.2f")")
-                                        .frame(width: 80)
-                                }
-                                
-                                Divider()
-                            }
-                            .padding(.horizontal)
-                            .padding(.vertical, 8)
-                        }
-                        
-                        // Totals
-                        VStack(spacing: 8) {
-                            HStack {
-                                Spacer()
-                                Text("Subtotal:")
-                                Text("$\(invoice.subtotal, specifier: "%.2f")")
-                                    .frame(width: 80)
-                            }
-                            
-                            if invoice.discount > 0 {
-                                HStack {
-                                    Spacer()
-                                    Text("Discount:")
-                                    Text("-$\(invoice.discount, specifier: "%.2f")")
-                                        .frame(width: 80)
-                                        .foregroundColor(.red)
-                                }
-                            }
-                            
-                            if invoice.tax > 0 {
-                                HStack {
-                                    Spacer()
-                                    Text("Tax (\(invoice.taxRate, specifier: "%.1f")%):")
-                                    Text("$\(invoice.tax, specifier: "%.2f")")
-                                        .frame(width: 80)
-                                }
-                            }
-                            
-                            HStack {
-                                Spacer()
-                                Text("Total:")
-                                    .font(.headline)
-                                Text("$\(invoice.totalAmount, specifier: "%.2f")")
-                                    .font(.headline)
-                                    .frame(width: 80)
-                            }
-                        }
-                        .padding()
-                        .background(Color(UIColor.secondarySystemBackground))
-                    }
-                    .background(Color(UIColor.tertiarySystemBackground))
-                    .cornerRadius(10)
-                    .shadow(radius: 1)
-                    
-                    // Notes
-                    if !invoice.notes.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Notes:")
-                                .font(.headline)
-                            
-                            Text(invoice.notes)
-                                .foregroundColor(.secondary)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding()
-                        .background(Color(UIColor.secondarySystemBackground))
-                        .cornerRadius(10)
-                    }
-                    
-                    // Banking Info
-                    if let bankingInfo = invoice.bankingInfo {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Payment Information:")
-                                .font(.headline)
-                            
-                            Text(bankingInfo)
-                                .foregroundColor(.secondary)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding()
-                        .background(Color(UIColor.secondarySystemBackground))
-                        .cornerRadius(10)
-                    }
-                    
-                    // Custom Fields
-                    if let customFields = invoice.customFields, !customFields.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Additional Information:")
-                                .font(.headline)
-                            
-                            ForEach(customFields, id: \.id) { field in
-                                HStack {
-                                    Text("\(field.name):")
-                                        .fontWeight(.medium)
-                                    Spacer()
-                                    Text(field.value)
-                                }
-                                .padding(.vertical, 4)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding()
-                        .background(Color(UIColor.secondarySystemBackground))
-                        .cornerRadius(10)
-                    }
-                    
-                    // Signature
-                    if let signatureData = invoice.signature, let uiImage = UIImage(data: signatureData) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Signature:")
-                                .font(.headline)
-                            
-                            Image(uiImage: uiImage)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(height: 100)
-                                .background(Color.white)
-                                .cornerRadius(8)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding()
-                        .background(Color(UIColor.secondarySystemBackground))
-                        .cornerRadius(10)
-                    }
-                    
-                    // Footer
-                    if let footerNote = invoice.footerNote {
-                        Text(footerNote)
-                            .font(.footnote)
-                            .foregroundColor(.secondary)
-                            .multilineTextAlignment(.center)
-                            .padding()
-                    }
-                }
-                .padding()
-            }
-            .navigationTitle("Invoice Preview")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: {
-                        showingShareSheet = true
-                    }) {
-                        Image(systemName: "square.and.arrow.up")
-                    }
-                }
-                
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Done") {
-                        dismiss()
-                    }
-                }
-            }
-            // In a full implementation, you would render the invoice to PDF and share it
-            .sheet(isPresented: $showingShareSheet) {
-                Text("PDF Sharing functionality would be implemented here")
-                    .padding()
-            }
-        }
-    }
-}
-
-// MARK: - View Models
-
+// View models for invoice items and custom fields
 struct InvoiceItemViewModel: Identifiable {
     let id = UUID()
     var name: String
     var description: String
-    var quantity: String
-    var unitPrice: String
-    var tax: String
-    var discount: String
-    var isExpanded: Bool = false
+    var quantity: Double
+    var price: Double
+    
+    var total: Double {
+        quantity * price
+    }
 }
 
 struct CustomFieldViewModel: Identifiable {
     let id = UUID()
     var name: String
     var value: String
+}
+
+#Preview {
+    CreateInvoiceView()
+        .environmentObject(SubscriptionService.shared)
 }
