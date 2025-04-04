@@ -295,6 +295,8 @@ struct MainMenuView: View {
                                 .padding(.top, isIPad ? 10 : 5)
                                 .padding(.bottom, isIPad ? 25 : 20)
 
+                                Spacer()
+
                                 // Main Menu with Grid layout on iPad
                                 if isIPad {
                                     // Grid layout for iPad in portrait
@@ -315,11 +317,9 @@ struct MainMenuView: View {
                                     }
                                 }
 
-                                Spacer()
-
                                 // Bottom Info
                                 VStack(spacing: 8) {
-                                    HStack {
+                                    HStack(alignment: .center) {
                                         Text("Version 1.0.0")
                                             .font(.caption)
                                             .foregroundColor(.secondary)
@@ -334,7 +334,7 @@ struct MainMenuView: View {
                                     }
                                     .padding(.horizontal)
                                 }
-                                .padding(.bottom, 20)
+                                .padding(.bottom, 10)
                             }
                             .padding()
                             .background(
