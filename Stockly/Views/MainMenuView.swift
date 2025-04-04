@@ -280,61 +280,70 @@ struct MainMenuView: View {
                         // Portrait layout for iPhone and iPad Portrait
                         VStack {
                             // Main content
-                            VStack(spacing: 0) {
-                                // Header
-                                VStack(spacing: 5) {
-                                    Text("STOCKLY")
-                                        .font(isIPad ? .system(size: 42, weight: .bold) : .system(size: 32, weight: .bold))
-                                        .fontWeight(.bold)
-                                        .foregroundColor(.blue)
+                            ZStack {
+                                // Main content in a VStack
+                                VStack(spacing: 0) {
+                                    // Header
+                                    VStack(spacing: 5) {
+                                        Text("STOCKLY")
+                                            .font(isIPad ? .system(size: 42, weight: .bold) : .system(size: 32, weight: .bold))
+                                            .fontWeight(.bold)
+                                            .foregroundColor(.blue)
 
-                                    Text("Inventory Management System")
-                                        .font(isIPad ? .callout : .caption)
-                                        .foregroundColor(.secondary)
-                                }
-                                .padding(.top, isIPad ? 10 : 5)
-                                .padding(.bottom, isIPad ? 25 : 20)
-
-                                Spacer()
-
-                                // Main Menu with Grid layout on iPad
-                                if isIPad {
-                                    // Grid layout for iPad in portrait
-                                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 20) {
-                                        menuButtonsGrid
-                                    }
-                                    .padding(.horizontal)
-                                } else {
-                                    // Adaptive grid layout for iPhone
-                                    let columns = [
-                                        GridItem(.flexible())
-                                    ]
-                                    ScrollView {
-                                        LazyVGrid(columns: columns, spacing: 16) {
-                                            menuButtonsContent
-                                        }
-                                        .padding(.horizontal, 20)
-                                    }
-                                }
-
-                                // Bottom Info
-                                VStack(spacing: 8) {
-                                    HStack(alignment: .center) {
-                                        Text("Version 1.0.0")
-                                            .font(.caption)
+                                        Text("Inventory Management System")
+                                            .font(isIPad ? .callout : .caption)
                                             .foregroundColor(.secondary)
-
-                                        Spacer()
-
-                                        Toggle("", isOn: $darkModeEnabled)
-                                            .labelsHidden()
-
-                                        Image(systemName: darkModeEnabled ? "moon.fill" : "sun.max.fill")
-                                            .foregroundColor(darkModeEnabled ? .yellow : .orange)
                                     }
-                                    .padding(.horizontal)
+                                    .padding(.top, isIPad ? 10 : 5)
+                                    .padding(.bottom, isIPad ? 15 : 10)
+
+                                    Spacer(minLength: 0)
+
+                                    // Main Menu with Grid layout on iPad
+                                    if isIPad {
+                                        // Grid layout for iPad in portrait
+                                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 20) {
+                                            menuButtonsGrid
+                                        }
+                                        .padding(.horizontal)
+                                    } else {
+                                        // Adaptive grid layout for iPhone
+                                        let columns = [
+                                            GridItem(.flexible())
+                                        ]
+                                        ScrollView {
+                                            LazyVGrid(columns: columns, spacing: 16) {
+                                                menuButtonsContent
+                                            }
+                                            .padding(.horizontal, 20)
+                                        }
+                                    }
+
+                                    Spacer(minLength: 0)
                                 }
-                                .padding(.bottom, 10)
+
+                                // Footer positioned at the bottom using VStack alignment
+                                VStack {
+                                    Spacer()
+                                    // Bottom Info
+                                    VStack(spacing: 8) {
+                                        HStack(alignment: .center) {
+                                            Text("Version 1.0.0")
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+
+                                            Spacer()
+
+                                            Toggle("", isOn: $darkModeEnabled)
+                                                .labelsHidden()
+
+                                            Image(systemName: darkModeEnabled ? "moon.fill" : "sun.max.fill")
+                                                .foregroundColor(darkModeEnabled ? .yellow : .orange)
+                                        }
+                                        .padding(.horizontal)
+                                    }
+                                    .padding(.bottom, 5)
+                                }
                             }
                             .padding()
                             .background(
