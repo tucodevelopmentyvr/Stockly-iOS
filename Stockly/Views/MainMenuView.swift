@@ -580,10 +580,10 @@ struct DashboardTabView: View {
                 }
                 .tag(3)
 
-            // More Tab
-            MoreMenuView()
+            // Bills Tab
+            BillsView(modelContext: modelContext)
                 .tabItem {
-                    Label("More", systemImage: "ellipsis.circle.fill")
+                    Label("Bills", systemImage: "creditcard.fill")
                 }
                 .tag(4)
 
