@@ -228,8 +228,9 @@ struct MainMenuView: View {
                             VStack(spacing: 15) {
                                 Spacer()
 
-                                Text("Stockly")
-                                    .font(.system(size: 40, weight: .bold))
+                                Text("STOCKLY")
+                                    .font(.system(size: 46, weight: .bold))
+                                    .foregroundColor(.blue)
 
                                 Text("Inventory Management System")
                                     .font(.title3)
@@ -282,9 +283,10 @@ struct MainMenuView: View {
                             VStack(spacing: 0) {
                                 // Header
                                 VStack(spacing: 5) {
-                                    Text("Stockly")
-                                        .font(isIPad ? .system(size: 36, weight: .bold) : .title)
+                                    Text("STOCKLY")
+                                        .font(isIPad ? .system(size: 42, weight: .bold) : .system(size: 32, weight: .bold))
                                         .fontWeight(.bold)
+                                        .foregroundColor(.blue)
 
                                     Text("Inventory Management System")
                                         .font(isIPad ? .callout : .caption)
@@ -306,10 +308,10 @@ struct MainMenuView: View {
                                         GridItem(.flexible())
                                     ]
                                     ScrollView {
-                                        LazyVGrid(columns: columns, spacing: 12) {
+                                        LazyVGrid(columns: columns, spacing: 16) {
                                             menuButtonsContent
                                         }
-                                        .padding(.horizontal, 5)
+                                        .padding(.horizontal, 20)
                                     }
                                 }
 
@@ -467,12 +469,13 @@ struct CompactMenuButton: View {
 
             HStack {
                 Image(systemName: icon)
-                    .font(.title3)
+                    .font(.title2)
                     .foregroundColor(color)
-                    .frame(width: 30, alignment: .center)
+                    .frame(width: 36, alignment: .center)
 
                 Text(title)
-                    .font(.headline)
+                    .font(.title3)
+                    .fontWeight(.semibold)
                     .foregroundColor(.primary)
 
                 Spacer()
@@ -515,7 +518,7 @@ struct MenuButtonWithoutAction: View {
             }
             .padding()
         }
-        .frame(height: 70)
+        .frame(height: 80)
     }
 }
 
