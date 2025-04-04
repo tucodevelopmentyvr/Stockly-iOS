@@ -23,6 +23,15 @@ enum BackupError: Error {
     case corruptedBackup
 }
 
+// Metadata structure for backup files
+struct BackupMetadata: Codable {
+    let appVersion: String
+    let buildNumber: String
+    let creationDate: String
+    let platform: String
+    let encrypted: Bool
+}
+
 /// BackupService handles the export and import of all app data
 class BackupService {
     private let modelContext: ModelContext
@@ -174,22 +183,31 @@ class BackupService {
             try await exportSettings(to: tempDirURL.appendingPathComponent("settings.json"))
 
             // Create metadata file with app version and creation date
-            let metadata = ["appVersion": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0",
-                         "buildNumber": Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1",
-                         "creationDate": ISO8601DateFormatter().string(from: Date()),
-                         "platform": "iOS",
-                         "encrypted": password != nil]
+            let metadata = BackupMetadata(
+                appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0",
+                buildNumber: Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1",
+                creationDate: ISO8601DateFormatter().string(from: Date()),
+                platform: "iOS",
+                encrypted: password != nil
+            )
 
-            try JSONEncoder().encode(metadata).write(to: tempDirURL.appendingPathComponent("metadata.json"))
+            let encoder = JSONEncoder()
+            try encoder.encode(metadata).write(to: tempDirURL.appendingPathComponent("metadata.json"))
 
             // Create a combined JSON file instead of a ZIP
             let dateFormatter = DateFormatter()
             dateFormatter.dateFormat = "yyyyMMdd_HHmmss"
             let dateString = dateFormatter.string(from: Date())
 
+            // We need to use JSONSerialization for the combined backup
+            // Convert metadata to dictionary for JSONSerialization
+            let metadataDict = try JSONSerialization.jsonObject(
+                with: encoder.encode(metadata)
+            ) as! [String: Any]
+
             // Create a combined backup dictionary with all the data
             var combinedBackup: [String: Any] = [
-                "metadata": metadata,
+                "metadata": metadataDict,
                 "version": currentBackupVersion
             ]
 
@@ -287,9 +305,11 @@ class BackupService {
 
             // Try to parse as JSON
             if let backupDict = try? JSONSerialization.jsonObject(with: backupData) as? [String: Any],
-               let metadata = backupDict["metadata"] as? [String: Any],
-               let encrypted = metadata["encrypted"] as? Bool {
-                return encrypted
+               let metadataDict = backupDict["metadata"] as? [String: Any] {
+                // Convert dictionary back to data and decode as BackupMetadata
+                let metadataData = try JSONSerialization.data(withJSONObject: metadataDict)
+                let metadata = try JSONDecoder().decode(BackupMetadata.self, from: metadataData)
+                return metadata.encrypted
             }
 
             // If we can't parse as JSON, it's likely encrypted
