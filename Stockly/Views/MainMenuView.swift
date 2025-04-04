@@ -60,7 +60,7 @@ struct MainMenuView: View {
         Button(action: {
             selection = "dashboard"
         }) {
-            CompactMenuButton(title: "Dashboard", icon: "chart.pie.fill", color: .accentColor)
+            CompactMenuButton(title: "Dashboard", icon: "chart.pie.fill", color: .gray)
         }
         .background(
             NavigationLink("", destination: DashboardTabView()
@@ -291,7 +291,7 @@ struct MainMenuView: View {
                                         .foregroundColor(.secondary)
                                 }
                                 .padding(.top, isIPad ? 10 : 5)
-                                .padding(.bottom, isIPad ? 15 : 10)
+                                .padding(.bottom, isIPad ? 25 : 20)
 
                                 // Main Menu with Grid layout on iPad
                                 if isIPad {
@@ -580,10 +580,10 @@ struct DashboardTabView: View {
                 }
                 .tag(3)
 
-            // Bills Tab
-            BillsView(modelContext: modelContext)
+            // More Tab
+            MoreMenuView()
                 .tabItem {
-                    Label("Bills", systemImage: "creditcard.fill")
+                    Label("More", systemImage: "ellipsis.circle.fill")
                 }
                 .tag(4)
 
