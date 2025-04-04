@@ -5,9 +5,9 @@ struct CreateInvoiceView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var subscriptionService: SubscriptionService
-    
+
     @State private var showingSubscriptionAlert = false
-    
+
     @State private var invoiceNumber = ""
     @State private var clientName = ""
     @State private var clientAddress = ""
@@ -31,7 +31,7 @@ struct CreateInvoiceView: View {
     @State private var bankingInfo = ""
     @State private var customFields: [CustomFieldViewModel] = []
     @State private var templateType = "standard"
-    
+
     // States for showing various sheets and alerts
     @State private var showingItemPicker = false
     @State private var showingAddItemForm = false
@@ -58,7 +58,7 @@ struct CreateInvoiceView: View {
     @State private var showingBankingInfo = false
     @State private var showingNotesInfo = false
     @State private var showingHeaderFooterInfo = false
-    
+
     // App storage for default values
     @AppStorage("defaultTaxRate") private var defaultTaxRate = "0.0"
     @AppStorage("defaultDiscountValue") private var defaultDiscountValue = "0.0"
@@ -74,16 +74,16 @@ struct CreateInvoiceView: View {
     @AppStorage("swiftCode") private var swiftCode = ""
     @AppStorage("invoiceDisclaimer") private var invoiceDisclaimer = "Thank you for your business."
     @AppStorage("defaultDocumentTheme") private var defaultDocumentTheme = DocumentTheme.classic.rawValue
-    
+
     // Computed properties for validation and calculations
     private var isFormValid: Bool {
         !clientName.isEmpty && selectedItems.count > 0
     }
-    
+
     private var subtotal: Double {
         selectedItems.reduce(0) { $0 + $1.total }
     }
-    
+
     private var discountAmount: Double {
         let discountValue = Double(discount) ?? 0
         if discountType == "percentage" {
@@ -92,21 +92,21 @@ struct CreateInvoiceView: View {
             return discountValue
         }
     }
-    
+
     private var taxAmount: Double {
         let taxRateValue = Double(taxRate) ?? 0
         return (subtotal - discountAmount) * (taxRateValue / 100)
     }
-    
+
     private var total: Double {
         subtotal - discountAmount + taxAmount
     }
-    
+
     enum DatePickerType {
         case issueDate
         case dueDate
     }
-    
+
     var body: some View {
         NavigationStack {
             Form {
@@ -117,22 +117,22 @@ struct CreateInvoiceView: View {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(client.name)
                                     .font(.headline)
-                                
-                                if !client.email.isEmpty {
+
+                                if let email = client.email, !email.isEmpty {
                                     Text(client.email)
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                 }
-                                
-                                if !client.phone.isEmpty {
+
+                                if let phone = client.phone, !phone.isEmpty {
                                     Text(client.phone)
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                 }
                             }
-                            
+
                             Spacer()
-                            
+
                             Button(action: {
                                 selectedClient = nil
                                 clientName = ""
@@ -160,21 +160,21 @@ struct CreateInvoiceView: View {
                                 Text("Select Client")
                             }
                         }
-                        
+
                         TextField("Client Name", text: $clientName)
                         TextField("Email", text: $clientEmail)
                             .keyboardType(.emailAddress)
                             .autocapitalization(.none)
                         TextField("Phone", text: $clientPhone)
                             .keyboardType(.phonePad)
-                        
+
                         TextField("Address", text: $clientAddress)
                         TextField("City", text: $clientCity)
                         TextField("Postal Code", text: $clientPostalCode)
                         TextField("Country", text: $clientCountry)
                     }
                 }
-                
+
                 // Invoice Details Section
                 Section(header: Text("Invoice Details")) {
                     HStack {
@@ -183,7 +183,7 @@ struct CreateInvoiceView: View {
                         TextField("Invoice Number", text: $invoiceNumber)
                             .multilineTextAlignment(.trailing)
                             .keyboardType(.numberPad)
-                        
+
                         Button(action: {
                             showingInvoiceNumberInfo = true
                         }) {
@@ -191,13 +191,13 @@ struct CreateInvoiceView: View {
                                 .foregroundColor(.secondary)
                         }
                     }
-                    
+
                     HStack {
                         Text("Issue Date")
                         Spacer()
                         Text(formattedDate(issueDate))
                             .foregroundColor(.secondary)
-                        
+
                         Button(action: {
                             datePickerType = .issueDate
                             showingDatePicker = true
@@ -206,13 +206,13 @@ struct CreateInvoiceView: View {
                                 .foregroundColor(.blue)
                         }
                     }
-                    
+
                     HStack {
                         Text("Due Date")
                         Spacer()
                         Text(formattedDate(dueDate))
                             .foregroundColor(.secondary)
-                        
+
                         Button(action: {
                             datePickerType = .dueDate
                             showingDatePicker = true
@@ -220,7 +220,7 @@ struct CreateInvoiceView: View {
                             Image(systemName: "calendar")
                                 .foregroundColor(.blue)
                         }
-                        
+
                         Button(action: {
                             showingDueDateInfo = true
                         }) {
@@ -229,7 +229,7 @@ struct CreateInvoiceView: View {
                         }
                     }
                 }
-                
+
                 // Items Section
                 Section(header: Text("Items")) {
                     ForEach(selectedItems.indices, id: \.self) { index in
@@ -237,9 +237,9 @@ struct CreateInvoiceView: View {
                             HStack {
                                 Text(selectedItems[index].name)
                                     .font(.headline)
-                                
+
                                 Spacer()
-                                
+
                                 Button(action: {
                                     itemToDelete = selectedItems[index]
                                     showingDeleteConfirmation = true
@@ -248,18 +248,18 @@ struct CreateInvoiceView: View {
                                         .foregroundColor(.red)
                                 }
                             }
-                            
+
                             HStack {
                                 Text("\(selectedItems[index].quantity, specifier: "%.2f") × \(formatCurrency(selectedItems[index].price))")
                                     .font(.subheadline)
                                     .foregroundColor(.secondary)
-                                
+
                                 Spacer()
-                                
+
                                 Text(formatCurrency(selectedItems[index].total))
                                     .font(.subheadline)
                             }
-                            
+
                             if !selectedItems[index].description.isEmpty {
                                 Text(selectedItems[index].description)
                                     .font(.caption)
@@ -269,7 +269,7 @@ struct CreateInvoiceView: View {
                         }
                         .padding(.vertical, 4)
                     }
-                    
+
                     Button(action: {
                         showingItemPicker = true
                     }) {
@@ -279,7 +279,7 @@ struct CreateInvoiceView: View {
                             Text("Add Item")
                         }
                     }
-                    
+
                     Button(action: {
                         showingAddItemForm = true
                     }) {
@@ -290,7 +290,7 @@ struct CreateInvoiceView: View {
                         }
                     }
                 }
-                
+
                 // Totals Section
                 Section(header: Text("Totals")) {
                     HStack {
@@ -298,24 +298,24 @@ struct CreateInvoiceView: View {
                         Spacer()
                         Text(formatCurrency(subtotal))
                     }
-                    
+
                     HStack {
                         Text("Discount")
-                        
+
                         Button(action: {
                             showingDiscountInfo = true
                         }) {
                             Image(systemName: "info.circle")
                                 .foregroundColor(.secondary)
                         }
-                        
+
                         Spacer()
-                        
+
                         TextField("0.0", text: $discount)
                             .keyboardType(.decimalPad)
                             .multilineTextAlignment(.trailing)
                             .frame(width: 60)
-                        
+
                         Button(action: {
                             showingDiscountTypePicker = true
                         }) {
@@ -326,7 +326,7 @@ struct CreateInvoiceView: View {
                                 .cornerRadius(4)
                         }
                     }
-                    
+
                     if discountAmount > 0 {
                         HStack {
                             Text("Discount Amount")
@@ -335,28 +335,28 @@ struct CreateInvoiceView: View {
                                 .foregroundColor(.red)
                         }
                     }
-                    
+
                     HStack {
                         Text("Tax Rate")
-                        
+
                         Button(action: {
                             showingTaxRateInfo = true
                         }) {
                             Image(systemName: "info.circle")
                                 .foregroundColor(.secondary)
                         }
-                        
+
                         Spacer()
-                        
+
                         TextField("0.0", text: $taxRate)
                             .keyboardType(.decimalPad)
                             .multilineTextAlignment(.trailing)
                             .frame(width: 60)
-                        
+
                         Text("%")
                             .foregroundColor(.secondary)
                     }
-                    
+
                     if taxAmount > 0 {
                         HStack {
                             Text("Tax Amount")
@@ -364,7 +364,7 @@ struct CreateInvoiceView: View {
                             Text(formatCurrency(taxAmount))
                         }
                     }
-                    
+
                     HStack {
                         Text("Total")
                             .font(.headline)
@@ -373,7 +373,7 @@ struct CreateInvoiceView: View {
                             .font(.headline)
                     }
                 }
-                
+
                 // Additional Details Section
                 Section(header: Text("Additional Details")) {
                     HStack {
@@ -381,7 +381,7 @@ struct CreateInvoiceView: View {
                         Spacer()
                         Text(paymentMethod)
                             .foregroundColor(.secondary)
-                        
+
                         Button(action: {
                             showingPaymentMethodPicker = true
                         }) {
@@ -389,7 +389,7 @@ struct CreateInvoiceView: View {
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
-                        
+
                         Button(action: {
                             showingPaymentMethodInfo = true
                         }) {
@@ -397,13 +397,13 @@ struct CreateInvoiceView: View {
                                 .foregroundColor(.secondary)
                         }
                     }
-                    
+
                     HStack {
                         Text("Template")
                         Spacer()
                         Text(templateType.capitalized)
                             .foregroundColor(.secondary)
-                        
+
                         Button(action: {
                             showingTemplateTypePicker = true
                         }) {
@@ -411,7 +411,7 @@ struct CreateInvoiceView: View {
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
-                        
+
                         Button(action: {
                             showingTemplateInfo = true
                         }) {
@@ -419,7 +419,7 @@ struct CreateInvoiceView: View {
                                 .foregroundColor(.secondary)
                         }
                     }
-                    
+
                     NavigationLink(destination: Text("Banking Details").padding()) {
                         HStack {
                             Text("Banking Details")
@@ -433,7 +433,7 @@ struct CreateInvoiceView: View {
                             }
                         }
                     }
-                    
+
                     NavigationLink(destination: Text("Notes").padding()) {
                         HStack {
                             Text("Notes")
@@ -448,7 +448,7 @@ struct CreateInvoiceView: View {
                         }
                     }
                 }
-                
+
                 // Custom Fields Section
                 Section(header: HStack {
                     Text("Custom Fields")
@@ -469,9 +469,9 @@ struct CreateInvoiceView: View {
                                     .font(.subheadline)
                                     .foregroundColor(.secondary)
                             }
-                            
+
                             Spacer()
-                            
+
                             Button(action: {
                                 customFieldToDelete = customFields[index]
                                 showingDeleteCustomFieldConfirmation = true
@@ -481,7 +481,7 @@ struct CreateInvoiceView: View {
                             }
                         }
                     }
-                    
+
                     Button(action: {
                         showingAddCustomFieldForm = true
                     }) {
@@ -501,7 +501,7 @@ struct CreateInvoiceView: View {
                         dismiss()
                     }
                 }
-                
+
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Preview") {
                         if !subscriptionService.canCreateInvoice() {
@@ -518,22 +518,22 @@ struct CreateInvoiceView: View {
                 if !subscriptionService.canCreateInvoice() {
                     showingSubscriptionAlert = true
                 }
-                
+
                 // Set default values
                 invoiceNumber = String(nextInvoiceNumber)
                 taxRate = defaultTaxRate
                 discount = defaultDiscountValue
                 discountType = defaultDiscountType
                 templateType = DocumentTheme(rawValue: defaultDocumentTheme)?.rawValue ?? "classic"
-                
+
                 // Set due date to 30 days from now by default
                 if let thirtyDaysLater = Calendar.current.date(byAdding: .day, value: 30, to: Date()) {
                     dueDate = thirtyDaysLater
                 }
-                
+
                 // Set footer note to default disclaimer
                 footerNote = invoiceDisclaimer
-                
+
                 // Set banking info
                 if !bankName.isEmpty || !accountNumber.isEmpty {
                     var info = ""
@@ -699,7 +699,7 @@ struct CreateInvoiceView: View {
             }
         }
     }
-    
+
     // Helper function to format dates
     private func formattedDate(_ date: Date) -> String {
         let formatter = DateFormatter()
@@ -707,7 +707,7 @@ struct CreateInvoiceView: View {
         formatter.timeStyle = .none
         return formatter.string(from: date)
     }
-    
+
     // Helper function to format currency
     private func formatCurrency(_ amount: Double) -> String {
         let formatter = NumberFormatter()
@@ -715,11 +715,11 @@ struct CreateInvoiceView: View {
         formatter.currencySymbol = "$" // Use the user's preferred currency symbol
         return formatter.string(from: NSNumber(value: amount)) ?? "$\(amount)"
     }
-    
+
     // Helper function to create invoice data for preview
     private func createInvoiceData() -> [String: Any] {
         // Create a dictionary with all the invoice data
-        var invoiceData: [String: Any] = [
+        let invoiceData: [String: Any] = [
             "invoiceNumber": invoiceNumber,
             "clientName": clientName,
             "clientAddress": clientAddress,
@@ -758,10 +758,10 @@ struct CreateInvoiceView: View {
                 ]
             }
         ]
-        
+
         return invoiceData
     }
-    
+
     // Helper function to save the invoice
     private func saveInvoice() {
         guard isFormValid else {
@@ -769,66 +769,64 @@ struct CreateInvoiceView: View {
             showingAlert = true
             return
         }
-        
-        // Create a new invoice
-        let invoice = Invoice(
-            invoiceNumber: invoiceNumber,
-            clientName: clientName,
-            clientAddress: clientAddress,
-            clientEmail: clientEmail,
-            clientPhone: clientPhone,
-            clientCity: clientCity,
-            clientCountry: clientCountry,
-            clientPostalCode: clientPostalCode,
-            issueDate: issueDate,
-            dueDate: dueDate,
-            subtotal: subtotal,
-            discount: Double(discount) ?? 0,
-            discountType: discountType,
-            taxRate: Double(taxRate) ?? 0,
-            taxAmount: taxAmount,
-            total: total,
-            paymentMethod: paymentMethod,
-            notes: notes,
-            headerNote: headerNote,
-            footerNote: footerNote,
-            bankingInfo: bankingInfo,
-            templateType: templateType,
-            status: "draft"
-        )
-        
-        // Add the invoice to the model context
-        modelContext.insert(invoice)
-        
-        // Create invoice items
+
+        // First create invoice items
+        var invoiceItems: [InvoiceItem] = []
+
         for itemVM in selectedItems {
             let invoiceItem = InvoiceItem(
                 name: itemVM.name,
                 description: itemVM.description,
-                quantity: itemVM.quantity,
-                price: itemVM.price,
-                total: itemVM.total,
-                invoice: invoice
+                quantity: Int(itemVM.quantity),
+                unitPrice: itemVM.price
             )
-            modelContext.insert(invoiceItem)
+            invoiceItems.append(invoiceItem)
         }
-        
+
+        // Create a new invoice
+        let invoice = Invoice(
+            number: invoiceNumber,
+            clientName: clientName,
+            clientAddress: clientAddress,
+            clientEmail: clientEmail,
+            clientPhone: clientPhone,
+            status: .draft,
+            paymentMethod: paymentMethod,
+            dateCreated: issueDate,
+            dueDate: dueDate,
+            items: invoiceItems,
+            discount: Double(discount) ?? 0,
+            discountType: discountType,
+            taxRate: Double(taxRate) ?? 0,
+            notes: notes,
+            headerNote: headerNote,
+            footerNote: footerNote,
+            bankingInfo: bankingInfo,
+            templateType: templateType
+        )
+
+        // Add the invoice to the model context
+        modelContext.insert(invoice)
+
+        // We've already created the invoice items and they're part of the invoice
+        // No need to create them again
+
         // Create custom fields
         for fieldVM in customFields {
             let customField = CustomInvoiceField(
                 name: fieldVM.name,
-                value: fieldVM.value,
-                invoice: invoice
+                value: fieldVM.value
             )
+            customField.invoice = invoice
             modelContext.insert(customField)
         }
-        
+
         // Update the next invoice number
         nextInvoiceNumber += 1
-        
+
         // Increment the invoice count in the subscription service
         subscriptionService.incrementInvoiceCount()
-        
+
         // Dismiss the view
         dismiss()
     }
@@ -841,7 +839,7 @@ struct InvoiceItemViewModel: Identifiable {
     var description: String
     var quantity: Double
     var price: Double
-    
+
     var total: Double {
         quantity * price
     }
