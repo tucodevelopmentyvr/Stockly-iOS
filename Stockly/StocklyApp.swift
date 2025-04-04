@@ -53,6 +53,7 @@ struct StocklyApp: App {
                     .environmentObject(authViewModel)
                     .environmentObject(navigationRouter)
                     .environmentObject(setupManager)
+                    .environmentObject(subscriptionService)
                     .onAppear {
                         // Enable edge swipe gestures for navigation at the UIKit level
                         if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
@@ -65,6 +66,7 @@ struct StocklyApp: App {
                 if setupManager.isSetupRequired() {
                     InitialSetupView()
                         .environmentObject(setupManager)
+                        .environmentObject(subscriptionService)
                 }
             }
         }
