@@ -228,12 +228,6 @@ struct MainMenuView: View {
                             VStack(spacing: 15) {
                                 Spacer()
 
-                                Image(systemName: "cube.box.fill")
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fit)
-                                    .frame(width: 80, height: 80)
-                                    .foregroundColor(.accentColor)
-
                                 Text("Stockly")
                                     .font(.system(size: 40, weight: .bold))
 
@@ -287,13 +281,7 @@ struct MainMenuView: View {
                             // Main content
                             VStack(spacing: 0) {
                                 // Header
-                                VStack(spacing: 10) {
-                                    Image(systemName: "cube.box.fill")
-                                        .resizable()
-                                        .aspectRatio(contentMode: .fit)
-                                        .frame(width: isIPad ? 60 : 45, height: isIPad ? 60 : 45)
-                                        .foregroundColor(.accentColor)
-
+                                VStack(spacing: 5) {
                                     Text("Stockly")
                                         .font(isIPad ? .system(size: 36, weight: .bold) : .title)
                                         .fontWeight(.bold)
@@ -302,8 +290,8 @@ struct MainMenuView: View {
                                         .font(isIPad ? .callout : .caption)
                                         .foregroundColor(.secondary)
                                 }
-                                .padding(.top, isIPad ? 20 : 10)
-                                .padding(.bottom, isIPad ? 30 : 20)
+                                .padding(.top, isIPad ? 10 : 5)
+                                .padding(.bottom, isIPad ? 15 : 10)
 
                                 // Main Menu with Grid layout on iPad
                                 if isIPad {
