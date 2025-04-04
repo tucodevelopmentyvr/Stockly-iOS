@@ -3,7 +3,7 @@ import SwiftUI
 struct HelpView: View {
     @State private var selectedSection = "General"
 
-    let sections = ["General", "Inventory", "Invoices", "Estimates", "CSV Import"]
+    let sections = ["General", "Inventory", "Invoices", "Estimates", "Backup & Restore", "CSV Import"]
 
     var body: some View {
         NavigationStack {
@@ -39,6 +39,8 @@ struct HelpView: View {
                             invoicesHelpContent
                         case "Estimates":
                             estimatesHelpContent
+                        case "Backup & Restore":
+                            backupRestoreHelpContent
                         case "CSV Import":
                             csvImportHelpContent
                         default:
@@ -69,6 +71,11 @@ struct HelpView: View {
             helpSection(
                 title: "Data Management",
                 content: "Your data is stored locally on your device. You can back up and restore your data using the Backup & Restore option in the Settings page. Regular backups are recommended to prevent data loss."
+            )
+
+            helpSection(
+                title: "Backup & Restore",
+                content: "Stockly provides a comprehensive backup and restore system to protect your data. You can create encrypted backups, set backup reminders, and restore your data if needed. See the 'Backup & Restore Guide' section for detailed instructions."
             )
 
             helpSection(
@@ -219,6 +226,50 @@ struct HelpView: View {
     }
 
     // Helper function for consistent help section formatting
+    var backupRestoreHelpContent: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            helpSection(
+                title: "Backup & Restore Overview",
+                content: "Stockly provides a comprehensive backup and restore system to protect your data. You can create encrypted backups, set backup reminders, and restore your data if needed."
+            )
+
+            helpSection(
+                title: "Creating a Backup",
+                content: "To create a backup, go to Settings > Backup & Restore and tap the 'Export' button. You can choose to password-protect your backup for added security. After creating a backup, you can share it via email, save it to Files, or use any other sharing option."
+            )
+
+            helpSection(
+                title: "Password Protection",
+                content: "Password-protected backups are encrypted using industry-standard encryption. This ensures that your sensitive business data remains secure. Remember your password! If you forget it, you won't be able to restore from that backup."
+            )
+
+            helpSection(
+                title: "Backup Settings",
+                content: "In the Backup Settings, you can configure backup reminders and password protection options. Regular backups are recommended to prevent data loss."
+            )
+
+            helpSection(
+                title: "Restoring from a Backup",
+                content: "To restore from a backup, go to Settings > Backup & Restore and tap the 'Select Backup' button. Choose the backup file you want to restore from. If the backup is password-protected, you'll need to enter the password. WARNING: Restoring will replace all current data with the backup data."
+            )
+
+            helpSection(
+                title: "After App Deletion",
+                content: "If you delete the app and reinstall it, you can still restore your data from a backup. Make sure to save your backup files outside the app (e.g., in Files, iCloud, or email) before deleting the app."
+            )
+
+            helpSection(
+                title: "Backup File Location",
+                content: "Backup files are stored in the app's Documents directory. You can access them through the 'Manage Backup Files' option in the Backup & Restore screen."
+            )
+
+            helpSection(
+                title: "Troubleshooting",
+                content: "If you encounter issues with backup or restore, ensure you have sufficient storage space on your device and that you're using the correct password for encrypted backups. For further assistance, contact our support team at tucodevelopmentyvr@gmail.com"
+            )
+        }
+    }
+
     func helpSection(title: String, content: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
